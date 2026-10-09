@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.openai.com https://api.github.com https://api.coinbase.com https://api.coingecko.com; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.openai.com https://generativelanguage.googleapis.com https://api.github.com https://api.coinbase.com https://api.coingecko.com; img-src data:; base-uri 'none'; form-action 'none'">
 <title>AI Chief of Staff</title>
 <style>
 :root{--bg:#0e1116;--panel:#151a22;--panel2:#1b2230;--line:#2a3344;--text:#e7ecf3;--mute:#8d99ad;--accent:#d4a84b;--accent2:#4b8fd4;--danger:#e0605a;--ok:#4caf7d}
@@ -117,7 +117,7 @@ input[type=date],input[type=number],select{width:100%;background:var(--panel2);c
   <label class="toggle" title="Case mode: nothing from this chat is saved to memory or kept after you close the page"><input type="checkbox" id="casetoggle"><span>Case mode</span>🔒</label>
   <button class="btn" id="btn-settings">Settings</button>
 </header>
-<div id="casebar">🔒 CASE MODE ON — nothing you type here is saved to memory or kept on this device. It is still sent to OpenAI to get an answer. Avoid real names and identifiers of case subjects.</div>
+<div id="casebar">🔒 CASE MODE ON — nothing you type here is saved to memory or kept on this device. It is still sent to the AI provider to get an answer. Avoid real names and identifiers of case subjects.</div>
 <div id="warnbar"></div>
 <main>
   <aside>
@@ -151,11 +151,13 @@ input[type=date],input[type=number],select{width:100%;background:var(--panel2);c
   <h2 id="dlg-title">Set up your Chief of Staff</h2>
   <p class="sub">Everything you enter here stays on this device. Nothing is built into the web page itself.</p>
 
-  <label for="f-key">1. OpenAI API key</label>
+  <label for="f-prov">1. AI provider</label>
+  <select id="f-prov"><option value="openai">OpenAI (recommended for real use, about $5 of credit)</option><option value="gemini">Google Gemini (free tier, for testing with fictional data only)</option></select>
+  <label for="f-key" id="l-key">API key</label>
   <input type="password" id="f-key" placeholder="sk-..." autocomplete="off">
-  <div class="note"><b>How to get one:</b> platform.openai.com → sign up → <b>API keys</b> → <b>Create new secret key</b> → copy it here. Then add about $5 under <b>Billing</b>. This is separate from ChatGPT Plus. Under Billing → Limits, set a monthly spending limit so it can never overspend.</div>
+  <div class="note" id="keyhelp"></div>
 
-  <label for="f-model">AI model <span style="color:var(--mute)">(leave as is unless OpenAI retires it)</span></label>
+  <label for="f-model">AI model <span style="color:var(--mute)">(leave as is unless the provider retires it)</span></label>
   <input type="text" id="f-model" value="gpt-4o-mini">
 
   <label for="f-profile">2. Your profile / Charter <span style="color:var(--mute)">(optional but this is what makes it "know you")</span></label>
@@ -177,9 +179,10 @@ input[type=date],input[type=number],select{width:100%;background:var(--panel2);c
   <h2>What happens to your data</h2>
   <p class="sub">Plain answers, no marketing.</p>
   <div class="note"><b>Stored on your device only:</b> your profile, saved memories, recent chat, and API key live in this browser's local storage. The web page that serves this app contains none of your personal information, so other visitors cannot see it.</div>
-  <div class="note"><b>Sent to OpenAI:</b> every message you send, plus your profile and saved memories, is sent to OpenAI's API to generate each reply. Your browser talks directly to OpenAI. The page is configured to block connections to anywhere except OpenAI, the public price feeds, and GitHub (only if you turn on sync).</div>
+  <div class="note"><b>Sent to OpenAI:</b> every message you send, plus your profile and saved memories, is sent to the AI provider you chose (OpenAI or Google Gemini) to generate each reply. Your browser talks directly to that provider. The page is configured to block connections to anywhere except OpenAI, Google Gemini, the public price feeds, and GitHub (only if you turn on sync).</div>
   <div class="note"><b>Bitcoin price:</b> the app asks Coinbase (or CoinGecko as a backup) for the public BTC price. That request contains none of your information.</div>
   <div class="note"><b>Sync (only if you turn it on):</b> your data is encrypted on your device and the encrypted file is stored in your own private GitHub gist. GitHub sees only ciphertext. A strong passphrase matters, because it is the only thing protecting that file if someone ever got the gist link.</div>
+  <div class="note"><b>Gemini free tier:</b> Google may use content sent with a free Gemini key to improve its products. Use a free Gemini key only for testing with fictional data.</div>
   <div class="note"><b>OpenAI's retention:</b> by default OpenAI says API data is not used to train its models and may be kept up to 30 days for abuse monitoring, then deleted. Check OpenAI's current policy and your account's data controls, as terms can change.</div>
   <div class="note"><b>Case mode:</b> keeps case chats out of memory and out of storage on this device. They are still sent to OpenAI to get an answer. For privileged or sensitive case material, strip names and identifying details first, and follow your department's and bar's rules on AI use.</div>
   <div class="note"><b>Limits:</b> memory is per browser and per device. Clearing browser data erases it, so use <b>Backup</b> regularly. Anyone who can use your unlocked browser can read it. Use a passphrase. This tool gives structured thinking, not legal, tax or investment advice.</div>
@@ -243,6 +246,12 @@ const BOARD = [
   {id:"cbt",  ini:"CB", name:"CBT Mindset Coach", desc:"Compassionate but firm mindset and habits",
    prompt:"Voice: a compassionate but firm CBT-style coach. Scope: stuck points, decision fatigue, thought patterns, habits, and fitness tracking and recommendations. Name the thinking trap, challenge it kindly, and end with one small concrete next action. You are a coach, not a therapist; if the user describes a crisis or risk to their safety, encourage contacting a qualified professional or emergency services."}
 ];
+const PROV = {
+  openai:{label:"OpenAI API key", ph:"sk-...", model:"gpt-4o-mini",
+    help:"<b>How to get one:</b> platform.openai.com → sign up → <b>API keys</b> → <b>Create new secret key</b> → copy it here. Then add about $5 under <b>Billing</b>. This is separate from ChatGPT Plus. Under Billing → Limits, set a monthly spending limit so it can never overspend."},
+  gemini:{label:"Google Gemini API key", ph:"AIza...", model:"gemini-3.5-flash",
+    help:"<b>How to get one (free, no card):</b> go to aistudio.google.com → sign in with a Google account → <b>Get API key</b> → <b>Create API key</b> → copy it here.<br><b>Privacy warning:</b> on Google's free tier, Google may use what you send to improve its products. Use this option only for testing with <b>fictional</b> information, never real personal, financial or case details. A paid Gemini key does not have that limitation."}
+};
 const QUICK = [
   "What should I focus on right now?",
   "Run my stress-test on this decision: ",
@@ -254,7 +263,7 @@ const QUICK = [
 
 /* ---------- state ---------- */
 let S = blank();
-function blank(){ return {profile:"", profileT:0, memories:[], fitness:[], btc:[], tomb:{}, btcTarget:0, metaT:0, sync:{}, chat:[], settings:{apiKey:"", model:"gpt-4o-mini"}}; }
+function blank(){ return {profile:"", profileT:0, memories:[], fitness:[], btc:[], tomb:{}, btcTarget:0, metaT:0, sync:{}, chat:[], settings:{provider:"openai", apiKey:"", model:"gpt-4o-mini"}}; }
 let cryptoKey = null, salt = null, passMem = null, price = null, syncing = false, lastSyncTry = 0, syncTimer = null, trkTab = "btc", fitMetric = "";
 let member = "auto", catFilter = "all", busy = false, caseMode = false, pendingLock = null;
 const $ = s => document.querySelector(s);
@@ -383,7 +392,8 @@ ${trackedBlock()}`;
 async function callAI(messages, json){
   const key = (S.settings.apiKey||"").trim();
   if(!key && S.settings.demo) return demoAI(messages, json);
-  if(!key) throw new Error("No API key yet. Open Settings and paste your OpenAI API key.");
+  if(!key) throw new Error("No API key yet. Open Settings and paste your API key.");
+  if(S.settings.provider === "gemini") return callGemini(messages, json, key);
   let r;
   try{
     r = await fetch("https://api.openai.com/v1/chat/completions", {method:"POST",
@@ -399,6 +409,36 @@ async function callAI(messages, json){
   }
   const j = await r.json();
   return j.choices[0].message.content || "";
+}
+async function callGemini(messages, json, key){
+  const sys = messages.filter(m => m.role==="system").map(m => m.content).join("\n\n");
+  const contents = [];
+  for(const m of messages){
+    if(m.role==="system") continue;
+    const role = m.role==="user" ? "user" : "model";
+    if(contents.length && contents[contents.length-1].role===role) contents[contents.length-1].parts[0].text += "\n\n" + m.content;
+    else contents.push({role, parts:[{text:m.content}]});
+  }
+  const body = {contents, generationConfig:{temperature: json?0:0.4, ...(json?{responseMimeType:"application/json"}:{})}};
+  if(sys) body.systemInstruction = {parts:[{text:sys}]};
+  const model = (S.settings.model||PROV.gemini.model).replace(/^models\//,"");
+  let r;
+  try{
+    r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {method:"POST",
+      headers:{"Content-Type":"application/json","x-goog-api-key":key}, body:JSON.stringify(body)});
+  }catch(e){ throw new Error("Couldn't reach Google. Check your internet connection and try again."); }
+  if(!r.ok){
+    let detail = ""; try{ detail = (await r.json()).error.message; }catch(e){}
+    if(r.status===400 && /api key/i.test(detail)) throw new Error("Google rejected the API key. Open Settings and paste it again (no extra spaces).");
+    if(r.status===401 || r.status===403) throw new Error("Google refused the key or it isn't allowed to use this model. " + detail);
+    if(r.status===404) throw new Error("Google doesn't recognise the model name in Settings. Check aistudio.google.com for a current model name. " + detail);
+    if(r.status===429) throw new Error("You've reached the free usage limit for now. Wait a minute and try again. " + detail);
+    throw new Error("Google error " + r.status + ". " + detail);
+  }
+  const j = await r.json(), c = j.candidates && j.candidates[0];
+  const text = c && c.content && c.content.parts ? c.content.parts.filter(p => !p.thought).map(p => p.text||"").join("") : "";
+  if(!text) throw new Error("Google returned no text" + (c && c.finishReason ? " (" + c.finishReason + ")" : "") + ". Try rephrasing.");
+  return text;
 }
 async function extractMemory(userText, aiText){
   const mems = S.memories.map(m => `${m.id} [${m.cat}] ${m.text}`).join("\n") || "(none)";
@@ -472,18 +512,23 @@ async function send(text){
 /* ---------- settings dialog ---------- */
 function openSettings(first){
   $("#dlg-title").textContent = first ? "Set up your Chief of Staff" : "Settings";
-  $("#f-key").value = S.settings.apiKey || ""; $("#f-model").value = S.settings.model || "gpt-4o-mini";
+  $("#f-prov").value = S.settings.provider || "openai"; $("#f-key").value = S.settings.apiKey || ""; $("#f-model").value = S.settings.model || PROV[$("#f-prov").value].model; provUI(false);
   $("#f-profile").value = S.profile || ""; $("#f-pass").value = ""; $("#f-nopass").checked = false;
   $("#f-pass").placeholder = cryptoKey ? "Locked with a passphrase. Type a new one to change it, or leave blank to keep it." : "At least 8 characters. If you forget it, the data cannot be recovered.";
   $("#passrow").style.display = cryptoKey ? "block" : "none";
   $("#dlg-cancel").style.display = first ? "none" : ""; $("#firstlink").style.display = first ? "flex" : "none";
   $("#dlg-err").textContent = ""; updProf(); $("#dlg").classList.add("on");
 }
+function provUI(switching){
+  const k = $("#f-prov").value, o = PROV[k], other = PROV[k==="openai"?"gemini":"openai"];
+  $("#l-key").textContent = o.label; $("#f-key").placeholder = o.ph; $("#keyhelp").innerHTML = o.help;
+  if(switching){ const m = $("#f-model").value.trim(); if(!m || m===other.model) $("#f-model").value = o.model; $("#f-key").value = ""; }
+}
 function updProf(){ const n = $("#f-profile").value.length; $("#profsize").textContent = n ? n.toLocaleString() + " characters loaded" + (n>60000 ? " (only the first 60,000 will be used)" : "") : ""; }
 async function saveSettings(demo){
   const p = $("#f-pass").value;
   if(p && p.length < 8){ $("#dlg-err").textContent = "Passphrase must be at least 8 characters."; return; }
-  S.settings.apiKey = $("#f-key").value.trim(); S.settings.demo = !!demo && !S.settings.apiKey; S.settings.model = $("#f-model").value.trim() || "gpt-4o-mini";
+  S.settings.provider = $("#f-prov").value; S.settings.apiKey = $("#f-key").value.trim(); S.settings.demo = !!demo && !S.settings.apiKey; S.settings.model = $("#f-model").value.trim() || PROV[S.settings.provider].model;
   const newProf = $("#f-profile").value.slice(0,60000);
   if(newProf !== S.profile){ S.profile = newProf; S.profileT = Date.now(); }
   S.metaT = Date.now();
@@ -652,7 +697,7 @@ async function encJSON(obj, key, sl){
   return {v:1, enc:true, salt:b64(sl), iv:b64(iv), ct:b64(ct)};
 }
 async function decJSON(o, key){ return JSON.parse(dec.decode(await crypto.subtle.decrypt({name:"AES-GCM", iv:unb64(o.iv)}, key, unb64(o.ct)))); }
-function syncState(){ return {profile:S.profile, profileT:S.profileT, memories:S.memories, fitness:S.fitness, btc:S.btc, tomb:S.tomb, metaT:S.metaT, meta:{apiKey:S.settings.apiKey, model:S.settings.model, btcTarget:S.btcTarget}}; }
+function syncState(){ return {profile:S.profile, profileT:S.profileT, memories:S.memories, fitness:S.fitness, btc:S.btc, tomb:S.tomb, metaT:S.metaT, meta:{provider:S.settings.provider, apiKey:S.settings.apiKey, model:S.settings.model, btcTarget:S.btcTarget}}; }
 function mergeState(r){
   if(!r || typeof r!=="object") return;
   const tomb = {...S.tomb}; for(const [k,v] of Object.entries(r.tomb||{})) tomb[k] = Math.max(tomb[k]||0, v);
@@ -663,7 +708,7 @@ function mergeState(r){
   }
   S.tomb = tomb;
   if((r.profileT||0) > (S.profileT||0)){ S.profile = r.profile||""; S.profileT = r.profileT; }
-  if((r.metaT||0) > (S.metaT||0) && r.meta){ S.settings.apiKey = r.meta.apiKey || S.settings.apiKey; S.settings.model = r.meta.model || S.settings.model; S.btcTarget = +r.meta.btcTarget || 0; S.metaT = r.metaT; }
+  if((r.metaT||0) > (S.metaT||0) && r.meta){ S.settings.provider = r.meta.provider || S.settings.provider; S.settings.apiKey = r.meta.apiKey || S.settings.apiKey; S.settings.model = r.meta.model || S.settings.model; S.btcTarget = +r.meta.btcTarget || 0; S.metaT = r.metaT; }
 }
 async function pullRemote(id){
   const g = await gh("/gists/" + id), f = g.files && g.files[GF];
@@ -802,6 +847,7 @@ $("#dlg-save").onclick = () => saveSettings(false);
 $("#dlg-demo").onclick = () => saveSettings(true);
 $("#dlg-cancel").onclick = () => $("#dlg").classList.remove("on");
 $("#f-profile").addEventListener("input", updProf);
+$("#f-prov").onchange = () => provUI(true);
 $("#btn-loadtxt").onclick = () => $("#proffile").click();
 $("#proffile").onchange = async e => { const f = e.target.files[0]; if(f){ $("#f-profile").value = (await f.text()); updProf(); } e.target.value = ""; };
 $("#btn-btc").onclick = () => openTracker("btc");
