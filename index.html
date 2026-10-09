@@ -168,7 +168,7 @@ input[type=date],input[type=number],select{width:100%;background:var(--panel2);c
   <div id="passrow" style="display:none;margin-top:6px"><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="f-nopass"> Remove my passphrase (store unlocked)</label></div>
   <div class="note"><b>What this does:</b> with a passphrase, your profile, memories and API key are encrypted on this device and you unlock them each time you open the page. Without one, they are stored as plain text in this browser.</div>
   <div class="bad" id="dlg-err"></div>
-  <div class="row"><button class="btn primary" id="dlg-save">Save and start</button><button class="btn" id="dlg-cancel">Cancel</button><span style="flex:1"></span><button class="btn" id="btn-privacy">What happens to my data?</button></div>
+  <div class="row"><button class="btn primary" id="dlg-save">Save and start</button><button class="btn" id="dlg-demo" title="Test the app without an API key">🧪 Try the demo (no key needed)</button><button class="btn" id="dlg-cancel">Cancel</button><span style="flex:1"></span><button class="btn" id="btn-privacy">What happens to my data?</button></div>
   <div class="row" id="firstlink" style="display:none"><button class="btn" id="btn-already">Already set up on another device? Connect sync instead</button></div>
 </div></div>
 
@@ -267,6 +267,7 @@ function md(s){
   h = h.replace(/```([\s\S]*?)```/g, "<pre>$1</pre>");
   h = h.replace(/`([^`\n]+)`/g, "<code>$1</code>");
   h = h.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+  h = h.replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?]|$)/g, "$1<i>$2</i>");
   h = h.replace(/^#{1,2} (.*)$/gm, "<h3>$1</h3>").replace(/^#{3,4} (.*)$/gm, "<h4>$1</h4>");
   h = h.replace(/(^|\n)((?:[-*] .*(?:\n|$))+)/g, (m,p,l) => p + "<ul>" + l.trim().split("\n").map(x => "<li>" + x.replace(/^[-*] /,"") + "</li>").join("") + "</ul>");
   return h;
@@ -381,6 +382,7 @@ ${trackedBlock()}`;
 }
 async function callAI(messages, json){
   const key = (S.settings.apiKey||"").trim();
+  if(!key && S.settings.demo) return demoAI(messages, json);
   if(!key) throw new Error("No API key yet. Open Settings and paste your OpenAI API key.");
   let r;
   try{
@@ -478,10 +480,10 @@ function openSettings(first){
   $("#dlg-err").textContent = ""; updProf(); $("#dlg").classList.add("on");
 }
 function updProf(){ const n = $("#f-profile").value.length; $("#profsize").textContent = n ? n.toLocaleString() + " characters loaded" + (n>60000 ? " (only the first 60,000 will be used)" : "") : ""; }
-async function saveSettings(){
+async function saveSettings(demo){
   const p = $("#f-pass").value;
   if(p && p.length < 8){ $("#dlg-err").textContent = "Passphrase must be at least 8 characters."; return; }
-  S.settings.apiKey = $("#f-key").value.trim(); S.settings.model = $("#f-model").value.trim() || "gpt-4o-mini";
+  S.settings.apiKey = $("#f-key").value.trim(); S.settings.demo = !!demo && !S.settings.apiKey; S.settings.model = $("#f-model").value.trim() || "gpt-4o-mini";
   const newProf = $("#f-profile").value.slice(0,60000);
   if(newProf !== S.profile){ S.profile = newProf; S.profileT = Date.now(); }
   S.metaT = Date.now();
@@ -491,7 +493,7 @@ async function saveSettings(){
   }
   if(p){ salt = crypto.getRandomValues(new Uint8Array(16)); cryptoKey = await deriveKey(p, salt); passMem = p; }
   await persist(); $("#dlg").classList.remove("on"); renderAll();
-  if(!S.settings.apiKey) toast("Add your API key to start chatting.");
+  if(!S.settings.apiKey && !S.settings.demo) toast("Add your API key to start chatting.");
 }
 
 /* ---------- backup ---------- */
@@ -721,6 +723,73 @@ async function connectSync(){
   $("#s-connect").disabled = false;
 }
 
+
+/* ---------- demo mode (no API key): scripted replies, real memory/trackers ---------- */
+const STOPW = ["user","goal","that","this","with","have","from","want","going","about","will","your","them","more","than","into","been","just"];
+const sig = t => (String(t).toLowerCase().match(/[a-z0-9]{4,}/g) || []).filter(w => !STOPW.includes(w));
+function demoExtract(t, mems){
+  const ops = {add:[], update:[], delete:[], log:[]}, td = today(); let m;
+  if((m = t.match(/forget\s+(?:that\s+|about\s+|my\s+)?(.+?)[.!?]*$/i))){
+    const words = sig(m[1]); let best = null, bs = 0;
+    for(const x of mems){ const sc = sig(x.text).filter(w => words.includes(w)).length; if(sc>bs){ bs = sc; best = x; } }
+    if(best) ops.delete.push(best.id); return ops;
+  }
+  const goal = t.match(/(?:my goal is(?: to)?|i want to|i plan to|my target is|i(?:'ve| have)? decided to|i'm going to|i am going to|i now want(?: to)?)\s+(.+?)[.!?]*$/i);
+  const planning = goal || /\b(goal|plan|hope|should|will|going to|want)\b/i.test(t);
+  const btc = t.match(/\b(?:bought|added|stacked|received|got)\s+(\d*\.?\d+)\s*(?:btc|bitcoin)(?:[^$\d]{0,20}\$\s*(\d[\d,]*\.?\d*))?/i);
+  if(btc) ops.log.push({kind:"btc", date:td, btc:+btc[1], usd: btc[2] ? +btc[2].replace(/,/g,"") : null});
+  if(!planning){
+    const fit = /\b(bench press|bench|squat|deadlift|overhead press|bodyweight|body weight|weigh(?:ed)?(?: in)?(?: at)?|5k|run)\b\D{0,15}?(\d*\.?\d+)(?!\d)\s*(lbs?|kg|min|minutes|mi|miles|km)?/ig;
+    for(const f of t.matchAll(fit)){
+      if(/^(run|5k)$/i.test(f[1]) && !f[3]) continue;                 // "run" needs a unit (e.g. 3 miles)
+      if(t.charAt(f.index + f[0].length) === "%") continue;            // ignore percentages like "30%"
+      let name = f[1].toLowerCase(); name = /weigh|body/.test(name) ? "Bodyweight" : name==="bench" ? "Bench press" : name[0].toUpperCase() + name.slice(1);
+      ops.log.push({kind:"fitness", date:td, name, value:+f[2], unit:(f[3]||"").replace(/^lbs$/,"lb").replace(/^minutes$/,"min")});
+    }
+  }
+  if(goal){
+    const text = goal[1], w = sig(text), isUpd = /raised|changed|updat|now want|instead|increase|moved/i.test(t); let tgt = null, bs = 0;
+    if(isUpd) for(const x of mems.filter(x => x.cat==="goal"||x.cat==="decision"||x.cat==="property"||x.cat==="btc"||x.cat==="fitness")){ const sc = sig(x.text).filter(z => w.includes(z)).length; if(sc>bs){ bs = sc; tgt = x; } }
+    const mt = "User's goal: " + text;
+    if(tgt) ops.update.push({id:tgt.id, text:mt});
+    else ops.add.push({text:mt, cat: /btc|bitcoin|sats/i.test(text) ? "btc" : /acre|property|house|land/i.test(text) ? "property" : /gym|lift|run|weight|fit/i.test(text) ? "fitness" : "goal"});
+  }
+  return ops;
+}
+function demoReply(text, sys){
+  const mm = sys.match(/Answer ONLY as the (.+?)\. Start with/), t = text.toLowerCase();
+  const tag = (n) => "**[" + (mm ? mm[1] : n) + "]** ";
+  const note = "\n\n_🧪 Demo reply: scripted, not real AI. Add an API key in Settings for real answers._";
+  const b = btcStats(), fm = Object.values(fitMetrics());
+  if(/remember|what do you know/.test(t))
+    return tag("Chief of Staff") + (S.memories.length ? "Here is what I have saved:\n" + S.memories.map(m => "- (" + m.cat + ") " + m.text).join("\n") : "Nothing saved yet. Tell me a goal or a decision and I'll keep it.") + note;
+  if(/stress|drawdown|30%/.test(t))
+    return tag("Risk Officer") + (S.profile.includes("30%") ? "Your Charter contains a 30% drawdown rule, so I will apply it.\n" : "") + "To run the stress-test I need:\n- Total portfolio value and how much of it is Bitcoin\n- Any margin or loan balance\n- Your maximum LTV limit\n\nThen the arithmetic is: value × 0.70 = stressed value; debt ÷ stressed value = stressed LTV; compare to your limit and call it **PASS** or **FAIL**." + note;
+  if(/btc|bitcoin|sats|stack/.test(t))
+    return tag("Chief Investment Officer") + (S.btc.length ? `Your logged stack is ${btcFmt(b.stack)} BTC` + (b.avg ? `, bought at an average of ${money(b.avg)}` : "") + (price ? `. At the live price of ${money(price.usd)} that is worth ${money(b.value)}` + (b.pl!==null ? ` (${b.pl>=0?"+":""}${money(b.pl)} on the coins with a recorded cost)` : "") + "." : ".") : "No Bitcoin is logged yet. Tell me \"I bought 0.01 BTC for $600\" and I'll log it.") + (S.btcTarget ? ` Goal: ${btcFmt(S.btcTarget)} BTC, ${(b.stack/S.btcTarget*100).toFixed(1)}% there.` : "") + note;
+  if(/bench|squat|deadlift|weigh|fitness|workout|gym|\brun\b|5k/.test(t))
+    return tag("CBT Mindset Coach") + (fm.length ? "Latest numbers I have:\n" + fm.map(x => { const l = x.rows[x.rows.length-1]; return "- " + x.name + ": " + l.value + (l.unit?" "+l.unit:"") + " (" + l.date + ")"; }).join("\n") + "\n\nOpen the Fitness tracker for the chart." : "No fitness entries yet. Tell me \"bench press 205 lb\" or \"weighed in at 184\" and I'll log it.") + "\nOne small next action: pick the single session you'll do next and put it on your calendar." + note;
+  if(/stuck|overwhelm|anxious|procrastinat|stressed/.test(t))
+    return tag("CBT Mindset Coach") + "Being stuck is information, not a verdict. Name the thought (\"I have to solve everything at once\"), then test it: what is the smallest next step that would take under 10 minutes? Do that one thing, then tell me how it went." + note;
+  if(/case|evidence|prosecut|suspect|witness|charge/.test(t))
+    return tag("Legal Counsel") + "A confidential-case framework (use Case mode and placeholders for names):\n1. **Intake:** facts, timeline, what is proven vs. alleged\n2. **Elements:** is each element supported by admissible evidence?\n3. **Vulnerabilities:** chain of custody, search/seizure issues, witness credibility, disclosure obligations\n4. **Bullet-proofing:** close each gap before charging\n5. **Readiness check:** could a defence attorney find a hole?\n\nThis is structured thinking, not legal advice." + note;
+  if(/focus|priorit|where i stand|full board|review|goals/.test(t))
+    return tag("Chief of Staff") + "Where you stand:\n" + (S.memories.length ? S.memories.slice(0,6).map(m => "- " + m.text).join("\n") : "- No goals saved yet.") + "\n- Bitcoin: " + (S.btc.length ? btcFmt(b.stack) + " BTC logged" : "nothing logged") + "\n- Fitness: " + (fm.length ? fm.length + " metric(s) tracked" : "nothing logged") + "\n\n**Risk Officer:** check every move against your drawdown rule.\n**CIO:** keep accumulating on a schedule.\n**Coach:** pick one concrete action for today." + note;
+  if(/property|acre|land|llc|house/.test(t))
+    return tag("Chief Investment Officer") + "For property and the LLC I would work in this order: (1) define the target and budget, (2) confirm the LLC and any lender requirements with your attorney and CPA, (3) check the purchase against your risk rules before committing. Tell me your target price and timeline and I'll save them." + note;
+  return tag("Chief of Staff") + "I'm running in demo mode, so I only understand a few topics: Bitcoin, fitness, stress-tests, cases, property, \"what do you remember\", and \"what should I focus on\". Try one of those, or say \"my goal is …\" to save a goal." + note;
+}
+async function demoAI(messages, json){
+  await new Promise(r => setTimeout(r, 450));
+  if(json){
+    const u = messages[0].content, ex = u.split("LATEST EXCHANGE:")[1] || "";
+    const um = (ex.match(/USER:\s*([\s\S]*?)\nASSISTANT:/) || [])[1] || "";
+    const mems = [...(u.split("EXISTING MEMORIES:")[1] || "").split("LATEST EXCHANGE")[0].matchAll(/^(m\w+) \[([\w-]+)\] (.+)$/gm)].map(x => ({id:x[1], cat:x[2], text:x[3]}));
+    return JSON.stringify(demoExtract(um, mems));
+  }
+  return demoReply(messages[messages.length-1].content, messages[0].content);
+}
+
 /* ---------- wiring ---------- */
 $("#composer").onsubmit = e => { e.preventDefault(); send($("#input").value); };
 $("#input").addEventListener("keydown", e => { if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send($("#input").value); } });
@@ -729,7 +798,8 @@ $("#menu").onclick = () => document.body.classList.toggle("side");
 $("#chat").onclick = () => document.body.classList.remove("side");
 $("#casetoggle").onchange = e => { caseMode = e.target.checked; document.body.classList.toggle("case", caseMode); };
 $("#btn-settings").onclick = () => openSettings(false);
-$("#dlg-save").onclick = saveSettings;
+$("#dlg-save").onclick = () => saveSettings(false);
+$("#dlg-demo").onclick = () => saveSettings(true);
 $("#dlg-cancel").onclick = () => $("#dlg").classList.remove("on");
 $("#f-profile").addEventListener("input", updProf);
 $("#btn-loadtxt").onclick = () => $("#proffile").click();
@@ -768,7 +838,12 @@ $("#lockform").onsubmit = async e => {
 };
 
 /* ---------- boot ---------- */
-function renderAll(){ renderBoard(); renderMemory(); renderChat(); renderSyncStat(); renderPrice(); }
+function renderAll(){ renderBoard(); renderMemory(); renderChat(); renderSyncStat(); renderPrice(); demoBar(); }
+function demoBar(){
+  const w = $("#warnbar");
+  if(S.settings.demo && !(S.settings.apiKey||"").trim()){ w.textContent = "🧪 DEMO MODE: replies are scripted, not real AI. Memory, trackers, price, lock and case mode are real. Open Settings and add an API key for real answers."; w.style.display = "block"; }
+  else if(w.textContent.startsWith("🧪")) w.style.display = "none";
+}
 function start(){
   renderAll(); fetchPrice(); setInterval(fetchPrice, 60000);
   if(!S.settings.apiKey && !S.profile && !S.memories.length) openSettings(true);
