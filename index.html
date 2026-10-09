@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.openai.com https://api.github.com https://api.coinbase.com https://api.coingecko.com; img-src data:; base-uri 'none'; form-action 'none'">
+<title>AI Chief of Staff</title>
+<style>
+:root{--bg:#0e1116;--panel:#151a22;--panel2:#1b2230;--line:#2a3344;--text:#e7ecf3;--mute:#8d99ad;--accent:#d4a84b;--accent2:#4b8fd4;--danger:#e0605a;--ok:#4caf7d}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer}
+header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+header h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.02em;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header h1 span{color:var(--accent)}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 12px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:650}
+.btn.danger{border-color:var(--danger);color:var(--danger)}
+.toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mute)}
+.toggle input{accent-color:var(--danger);width:16px;height:16px}
+#casebar{display:none;background:#3a1715;color:#ffd5d2;padding:6px 14px;font-size:13px;border-bottom:1px solid var(--danger)}
+body.case #casebar{display:block}
+#warnbar{display:none;background:#3a2f12;color:#ffe9b0;padding:6px 14px;font-size:13px}
+main{flex:1;display:flex;min-height:0}
+aside{width:300px;background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:12px;flex-shrink:0}
+aside h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--mute);margin:14px 0 6px}
+aside h2:first-child{margin-top:0}
+.member{display:flex;gap:8px;align-items:center;width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:8px;padding:6px 8px;margin-bottom:2px}
+.member:hover{background:var(--panel2)}
+.member.on{background:var(--panel2);border-color:var(--accent)}
+.member b{font-size:13px;display:block}
+.member small{color:var(--mute);font-size:11.5px;display:block;line-height:1.3}
+.member .dot{width:28px;height:28px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0}
+.qc{display:block;width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-bottom:5px;font-size:13px}
+.qc:hover{border-color:var(--accent2)}
+.cats{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.cat{font-size:11px;padding:2px 8px;border-radius:99px;background:none;border:1px solid var(--line);color:var(--mute)}
+.cat.on{border-color:var(--accent);color:var(--accent)}
+.mem{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:5px;font-size:12.5px}
+.mem .meta{display:flex;justify-content:space-between;color:var(--mute);font-size:10.5px;margin-top:3px;gap:6px}
+.mem button{background:none;border:none;color:var(--mute);padding:0 3px;font-size:11px;text-decoration:underline}
+.mem button:hover{color:var(--accent)}
+.empty{color:var(--mute);font-size:12.5px}
+section#chatwrap{flex:1;display:flex;flex-direction:column;min-width:0}
+#chat{flex:1;overflow-y:auto;padding:18px;scroll-behavior:smooth}
+.msg{max-width:820px;margin:0 auto 14px;display:flex;flex-direction:column}
+.msg .who{font-size:11px;color:var(--mute);margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em}
+.msg.user .who{text-align:right}
+.bubble{padding:10px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.user .bubble{background:#1d2b44;border-color:#2c4268;align-self:flex-end;max-width:90%}
+.bubble h3,.bubble h4{margin:.4em 0 .2em;font-size:15px;color:var(--accent)}
+.bubble ul{margin:.3em 0;padding-left:1.2em}
+.bubble code{background:#0b0e13;padding:1px 5px;border-radius:4px;font-size:.9em}
+.bubble pre{background:#0b0e13;padding:8px;border-radius:6px;overflow-x:auto;margin:.4em 0}
+.msg.case .bubble{border-color:var(--danger)}
+.remembered{font-size:12px;color:var(--ok);margin-top:5px}
+.err .bubble{border-color:var(--danger);color:#ffd5d2}
+.hello{max-width:640px;margin:8vh auto 0;text-align:center;color:var(--mute)}
+.hello h2{color:var(--text);margin-bottom:6px}
+form#composer{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line);background:var(--panel)}
+#input{flex:1;resize:none;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;max-height:160px;min-height:44px}
+#input:focus,input:focus,textarea:focus{outline:2px solid var(--accent2);outline-offset:0}
+.typing{color:var(--mute);font-style:italic}
+#menu{display:none}
+.overlay{position:fixed;inset:0;background:rgba(5,7,10,.88);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+.overlay.on{display:flex}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;width:min(640px,100%);max-height:94vh;overflow-y:auto}
+.card h2{margin:0 0 4px}
+.card p.sub{color:var(--mute);margin:0 0 14px;font-size:13.5px}
+label{display:block;font-size:12.5px;color:var(--mute);margin:12px 0 4px}
+input[type=text],input[type=password],textarea{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit}
+textarea{min-height:150px;resize:vertical}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.note{font-size:12.5px;color:var(--mute);background:var(--panel2);border-radius:8px;padding:8px 10px;margin-top:10px}
+.note b{color:var(--text)}
+.bad{color:var(--danger);font-size:13px;margin-top:8px;min-height:1em}
+#toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--accent);padding:8px 14px;border-radius:8px;font-size:13px;display:none;z-index:99}
+
+.chip{font-size:13px;color:var(--accent);border:1px solid var(--line);border-radius:99px;padding:3px 10px;white-space:nowrap;background:var(--panel2)}
+.card.wide{width:min(860px,100%)}
+.tabs{display:flex;gap:6px;margin:10px 0}
+.tab{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 14px}
+.tab.on{border-color:var(--accent);color:var(--accent)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:10px 0}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.stat small{display:block;color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.stat b{font-size:17px}
+.pos{color:var(--ok)}.neg{color:var(--danger)}
+.bar{height:10px;border-radius:99px;background:var(--panel2);border:1px solid var(--line);overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;background:var(--accent)}
+svg.chart{width:100%;height:auto;display:block;background:var(--panel2);border:1px solid var(--line);border-radius:10px}
+table.t{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+table.t th{color:var(--mute);font-weight:500;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+table.t td,table.t th{padding:5px 6px;border-bottom:1px solid var(--line)}
+.frm{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:10px}
+.frm>div{flex:1;min-width:110px}
+.frm label{margin:0 0 3px}
+input[type=date],input[type=number],select{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 8px;font:inherit}
+.side-btn{display:block;width:100%;text-align:left;margin-bottom:5px}
+.syncok{color:var(--ok)}.syncbad{color:var(--danger)}
+@media(max-width:780px){
+ aside{position:fixed;top:0;bottom:0;left:0;z-index:30;width:86%;max-width:330px;transform:translateX(-100%);transition:transform .2s}
+ body.side aside{transform:none}
+ #menu{display:inline-block}
+ #chat{padding:12px}
+ .toggle span{display:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <button class="btn" id="menu" aria-label="Open menu">☰</button>
+  <h1><span>◆</span> AI Chief of Staff</h1>
+  <span class="chip" id="price" title="Live Bitcoin price (USD)">₿ …</span>
+  <label class="toggle" title="Case mode: nothing from this chat is saved to memory or kept after you close the page"><input type="checkbox" id="casetoggle"><span>Case mode</span>🔒</label>
+  <button class="btn" id="btn-settings">Settings</button>
+</header>
+<div id="casebar">🔒 CASE MODE ON — nothing you type here is saved to memory or kept on this device. It is still sent to OpenAI to get an answer. Avoid real names and identifiers of case subjects.</div>
+<div id="warnbar"></div>
+<main>
+  <aside>
+    <h2>Your Board</h2>
+    <div id="board"></div>
+    <h2>Quick commands</h2>
+    <div id="quick"></div>
+    <h2>Trackers &amp; sync</h2>
+    <button class="btn side-btn" id="btn-btc">₿ Bitcoin tracker</button>
+    <button class="btn side-btn" id="btn-fit">💪 Fitness tracker</button>
+    <button class="btn side-btn" id="btn-sync">🔄 Sync devices</button>
+    <div class="empty" id="syncstat"></div>
+    <h2>Memory <span id="memcount" style="color:var(--accent)"></span></h2>
+    <div class="cats" id="cats"></div>
+    <div id="memlist"></div>
+    <div class="row"><button class="btn" id="btn-addmem">+ Add</button><button class="btn" id="btn-export">Backup</button><button class="btn" id="btn-import">Restore</button></div>
+    <input type="file" id="importfile" accept=".json,application/json" hidden>
+  </aside>
+  <section id="chatwrap">
+    <div id="chat"></div>
+    <form id="composer" autocomplete="off">
+      <button type="button" class="btn" id="mic" title="Speak your question">🎤</button>
+      <textarea id="input" rows="1" placeholder="Ask your Board anything…  (Enter to send, Shift+Enter for a new line)"></textarea>
+      <button class="btn primary" id="send">Send</button>
+    </form>
+  </section>
+</main>
+
+<!-- SETTINGS / FIRST-RUN SETUP -->
+<div class="overlay" id="dlg"><div class="card">
+  <h2 id="dlg-title">Set up your Chief of Staff</h2>
+  <p class="sub">Everything you enter here stays on this device. Nothing is built into the web page itself.</p>
+
+  <label for="f-key">1. OpenAI API key</label>
+  <input type="password" id="f-key" placeholder="sk-..." autocomplete="off">
+  <div class="note"><b>How to get one:</b> platform.openai.com → sign up → <b>API keys</b> → <b>Create new secret key</b> → copy it here. Then add about $5 under <b>Billing</b>. This is separate from ChatGPT Plus. Under Billing → Limits, set a monthly spending limit so it can never overspend.</div>
+
+  <label for="f-model">AI model <span style="color:var(--mute)">(leave as is unless OpenAI retires it)</span></label>
+  <input type="text" id="f-model" value="gpt-4o-mini">
+
+  <label for="f-profile">2. Your profile / Charter <span style="color:var(--mute)">(optional but this is what makes it "know you")</span></label>
+  <textarea id="f-profile" placeholder="Open your Word document → Ctrl+A → Ctrl+C → paste here. You can also load a .txt or .md file."></textarea>
+  <div class="row" style="margin-top:6px"><button type="button" class="btn" id="btn-loadtxt">Load .txt / .md file</button><span class="empty" id="profsize"></span></div>
+  <input type="file" id="proffile" accept=".txt,.md,text/plain,text/markdown" hidden>
+
+  <label for="f-pass">3. Passphrase to lock your data <span style="color:var(--accent)">(strongly recommended)</span></label>
+  <input type="password" id="f-pass" placeholder="At least 8 characters. If you forget it, the data cannot be recovered." autocomplete="new-password">
+  <div id="passrow" style="display:none;margin-top:6px"><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="f-nopass"> Remove my passphrase (store unlocked)</label></div>
+  <div class="note"><b>What this does:</b> with a passphrase, your profile, memories and API key are encrypted on this device and you unlock them each time you open the page. Without one, they are stored as plain text in this browser.</div>
+  <div class="bad" id="dlg-err"></div>
+  <div class="row"><button class="btn primary" id="dlg-save">Save and start</button><button class="btn" id="dlg-cancel">Cancel</button><span style="flex:1"></span><button class="btn" id="btn-privacy">What happens to my data?</button></div>
+  <div class="row" id="firstlink" style="display:none"><button class="btn" id="btn-already">Already set up on another device? Connect sync instead</button></div>
+</div></div>
+
+<!-- PRIVACY -->
+<div class="overlay" id="priv"><div class="card">
+  <h2>What happens to your data</h2>
+  <p class="sub">Plain answers, no marketing.</p>
+  <div class="note"><b>Stored on your device only:</b> your profile, saved memories, recent chat, and API key live in this browser's local storage. The web page that serves this app contains none of your personal information, so other visitors cannot see it.</div>
+  <div class="note"><b>Sent to OpenAI:</b> every message you send, plus your profile and saved memories, is sent to OpenAI's API to generate each reply. Your browser talks directly to OpenAI. The page is configured to block connections to anywhere except OpenAI, the public price feeds, and GitHub (only if you turn on sync).</div>
+  <div class="note"><b>Bitcoin price:</b> the app asks Coinbase (or CoinGecko as a backup) for the public BTC price. That request contains none of your information.</div>
+  <div class="note"><b>Sync (only if you turn it on):</b> your data is encrypted on your device and the encrypted file is stored in your own private GitHub gist. GitHub sees only ciphertext. A strong passphrase matters, because it is the only thing protecting that file if someone ever got the gist link.</div>
+  <div class="note"><b>OpenAI's retention:</b> by default OpenAI says API data is not used to train its models and may be kept up to 30 days for abuse monitoring, then deleted. Check OpenAI's current policy and your account's data controls, as terms can change.</div>
+  <div class="note"><b>Case mode:</b> keeps case chats out of memory and out of storage on this device. They are still sent to OpenAI to get an answer. For privileged or sensitive case material, strip names and identifying details first, and follow your department's and bar's rules on AI use.</div>
+  <div class="note"><b>Limits:</b> memory is per browser and per device. Clearing browser data erases it, so use <b>Backup</b> regularly. Anyone who can use your unlocked browser can read it. Use a passphrase. This tool gives structured thinking, not legal, tax or investment advice.</div>
+  <div class="row"><button class="btn primary" id="priv-close">Close</button></div>
+</div></div>
+
+<!-- UNLOCK -->
+<div class="overlay" id="lock"><div class="card" style="width:min(420px,100%)">
+  <h2>Unlock</h2>
+  <p class="sub">Enter your passphrase to open your Chief of Staff.</p>
+  <form id="lockform"><input type="password" id="lockpass" placeholder="Passphrase" autocomplete="current-password">
+  <div class="bad" id="lockerr"></div>
+  <div class="row"><button class="btn primary">Unlock</button></div></form>
+</div></div>
+<!-- TRACKERS -->
+<div class="overlay" id="trk"><div class="card wide">
+  <div class="tabs"><button class="tab" data-tab="btc">₿ Bitcoin</button><button class="tab" data-tab="fit">💪 Fitness</button><span style="flex:1"></span><button class="btn" id="trk-close">Close</button></div>
+  <div id="trk-body"></div>
+</div></div>
+
+<!-- SYNC -->
+<div class="overlay" id="syncdlg"><div class="card">
+  <h2>Sync your devices</h2>
+  <p class="sub">Keeps your profile, memories, Bitcoin log and fitness log the same on your phone and computer. Chat history stays on each device.</p>
+  <div class="note"><b>How it stays private:</b> everything is encrypted on your device with your passphrase before it leaves. It is stored as unreadable ciphertext in a private "secret gist" in <b>your own free GitHub account</b>. GitHub, and anyone else, cannot read it. There is no server of ours.</div>
+  <div id="sync-off">
+    <div class="note"><b>One-time setup (about 3 minutes):</b><br>
+    1. Create a free account at github.com (or sign in).<br>
+    2. Go to github.com/settings/tokens/new?scopes=gist&amp;description=Chief%20of%20Staff (type this in your browser) → choose <b>No expiration</b> → tick only <b>gist</b> → <b>Generate token</b> → copy it.<br>
+    3. Paste it below. On your second device do the same, with the <b>same passphrase</b>.</div>
+    <label for="s-token">GitHub token</label><input type="password" id="s-token" placeholder="ghp_..." autocomplete="off">
+    <div id="s-passrow"><label for="s-pass">Your passphrase (the same on every device)</label><input type="password" id="s-pass" autocomplete="new-password"></div>
+    <div class="bad" id="s-err"></div>
+    <div class="row"><button class="btn primary" id="s-connect">Connect and sync</button><button class="btn" id="s-close">Cancel</button></div>
+  </div>
+  <div id="sync-on" style="display:none">
+    <div class="note" id="s-status"></div>
+    <div class="row"><button class="btn primary" id="s-now">Sync now</button><button class="btn danger" id="s-off">Disconnect</button><button class="btn" id="s-close2">Close</button></div>
+    <div class="note">Disconnecting leaves the encrypted copy in your GitHub account. You can delete it at gist.github.com. Syncing runs automatically a few seconds after each change and whenever you open the app.</div>
+  </div>
+</div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- constants ---------- */
+const LS = "cos.v1";
+const CATS = ["goal","decision","btc","property","finance","case-safe","fitness","preference","note"];
+const BOARD = [
+  {id:"auto", ini:"★", name:"Chief of Staff (auto-route)", desc:"Picks the right Board member(s) for your question", prompt:""},
+  {id:"cio",  ini:"CI", name:"Chief Investment Officer", desc:"BTC, real estate, portfolio layers, capital deployment",
+   prompt:"Voice: a disciplined, long-horizon chief investment officer. Scope: Bitcoin accumulation, property acquisition strategy, the user's portfolio layering (e.g. stability, income, growth, liquidity as defined in their Charter), capital allocation and cost of capital. Always tie recommendations to the user's own stated rules and say plainly when an idea breaks them."},
+  {id:"cro",  ini:"RO", name:"Risk Officer", desc:"Stress tests, leverage, downside, family stability",
+   prompt:"Voice: a sceptical, protective risk officer. Scope: downside scenarios, leverage and margin limits, liquidity, concentration, and the user's stress-test rule (for example a 30% market drawdown test if their Charter says so). When asked to stress-test, show the arithmetic step by step using only numbers the user has given; ask for any missing number instead of guessing; state clearly PASS or FAIL against their rules."},
+  {id:"legal",ini:"LC", name:"Legal Counsel", desc:"LLC, property law, case strategy (not legal advice)",
+   prompt:"Voice: a careful legal analyst. Scope: LLC/trust structure questions, real-estate transaction issues, and, in case discussions, evaluating the strength of a case, likely defence challenges, evidentiary and procedural vulnerabilities, and how to strengthen the file before prosecution. Identify issues and options, note that jurisdiction matters, and flag what needs review by a licensed attorney. Never fabricate statutes, case law or citations; if unsure, say so."},
+  {id:"acct", ini:"AC", name:"Accountant", desc:"Taxes, business credit, cash flow",
+   prompt:"Voice: a practical CPA-minded accountant. Scope: entity-level tax considerations, business credit building, cash-flow and net-worth tracking, pension and income modelling. Use only the user's real numbers; list assumptions; flag where a CPA must confirm."},
+  {id:"math", ini:"MA", name:"Mathematician", desc:"Projections, EV, LTV, compounding",
+   prompt:"Voice: a precise mathematician. Scope: projections, expected value, LTV/ratio calculations, DCA and compounding models, sensitivity analysis. Show formulas and intermediate steps, state assumptions, and double-check arithmetic. Never invent inputs."},
+  {id:"cbt",  ini:"CB", name:"CBT Mindset Coach", desc:"Compassionate but firm mindset and habits",
+   prompt:"Voice: a compassionate but firm CBT-style coach. Scope: stuck points, decision fatigue, thought patterns, habits, and fitness tracking and recommendations. Name the thinking trap, challenge it kindly, and end with one small concrete next action. You are a coach, not a therapist; if the user describes a crisis or risk to their safety, encourage contacting a qualified professional or emergency services."}
+];
+const QUICK = [
+  "What should I focus on right now?",
+  "Run my stress-test on this decision: ",
+  "Full Board review of where I stand against my goals",
+  "Fitness check-in: ",
+  "I feel stuck.",
+  "What do you remember about my goals and decisions?"
+];
+
+/* ---------- state ---------- */
+let S = blank();
+function blank(){ return {profile:"", profileT:0, memories:[], fitness:[], btc:[], tomb:{}, btcTarget:0, metaT:0, sync:{}, chat:[], settings:{apiKey:"", model:"gpt-4o-mini"}}; }
+let cryptoKey = null, salt = null, passMem = null, price = null, syncing = false, lastSyncTry = 0, syncTimer = null, trkTab = "btc", fitMetric = "";
+let member = "auto", catFilter = "all", busy = false, caseMode = false, pendingLock = null;
+const $ = s => document.querySelector(s);
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+/* ---------- helpers ---------- */
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function md(s){
+  let h = esc(s);
+  h = h.replace(/```([\s\S]*?)```/g, "<pre>$1</pre>");
+  h = h.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  h = h.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+  h = h.replace(/^#{1,2} (.*)$/gm, "<h3>$1</h3>").replace(/^#{3,4} (.*)$/gm, "<h4>$1</h4>");
+  h = h.replace(/(^|\n)((?:[-*] .*(?:\n|$))+)/g, (m,p,l) => p + "<ul>" + l.trim().split("\n").map(x => "<li>" + x.replace(/^[-*] /,"") + "</li>").join("") + "</ul>");
+  return h;
+}
+const newId = () => "m" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const b64 = u8 => btoa(String.fromCharCode(...u8));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+function toast(t){ const el=$("#toast"); el.textContent=t; el.style.display="block"; clearTimeout(toast.t); toast.t=setTimeout(()=>el.style.display="none",3500); }
+function fmtDate(t){ return new Date(t).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); }
+
+/* ---------- crypto + storage ---------- */
+async function deriveKey(pass, saltBytes){
+  const km = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({name:"PBKDF2", salt:saltBytes, iterations:250000, hash:"SHA-256"}, km, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+}
+async function blobFromState(){
+  const data = JSON.stringify({...S, chat: S.chat.filter(m => !m.case).slice(-60)});
+  if(cryptoKey){
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM", iv}, cryptoKey, enc.encode(data)));
+    return {v:1, enc:true, salt:b64(salt), iv:b64(iv), ct:b64(ct)};
+  }
+  return {v:1, enc:false, data:JSON.parse(data)};
+}
+async function persistLocal(){
+  try{ localStorage.setItem(LS, JSON.stringify(await blobFromState())); }
+  catch(e){ showWarn("Your browser is blocking or has filled its storage, so memory can't be saved. Don't use a private/incognito window, and use Backup often."); }
+}
+async function persist(){ await persistLocal(); scheduleSync(); }
+async function decryptBlob(o, pass){
+  const sl = unb64(o.salt), key = await deriveKey(pass, sl);
+  const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:unb64(o.iv)}, key, unb64(o.ct));
+  return {state: JSON.parse(dec.decode(pt)), key, salt: sl};
+}
+function normalize(st){
+  const d = blank();
+  return {profile: st.profile||"", profileT: +st.profileT||0, memories: Array.isArray(st.memories)?st.memories:[],
+          fitness: Array.isArray(st.fitness)?st.fitness:[], btc: Array.isArray(st.btc)?st.btc:[], tomb: st.tomb&&typeof st.tomb==="object"?st.tomb:{},
+          btcTarget: +st.btcTarget||0, metaT: +st.metaT||0, sync: st.sync&&typeof st.sync==="object"?st.sync:{},
+          chat: Array.isArray(st.chat)?st.chat:[], settings:{...d.settings, ...(st.settings||{})}};
+}
+function showWarn(t){ const w=$("#warnbar"); w.textContent=t; w.style.display="block"; }
+
+/* ---------- rendering ---------- */
+function renderBoard(){
+  $("#board").innerHTML = BOARD.map(b => `<button class="member ${b.id===member?"on":""}" data-id="${b.id}"><span class="dot">${b.ini}</span><span><b>${esc(b.name)}</b><small>${esc(b.desc)}</small></span></button>`).join("");
+  $("#board").querySelectorAll(".member").forEach(el => el.onclick = () => { member = el.dataset.id; renderBoard(); document.body.classList.remove("side"); $("#input").focus(); });
+  $("#quick").innerHTML = QUICK.map((q,i) => `<button class="qc" data-i="${i}">${esc(q)}</button>`).join("");
+  $("#quick").querySelectorAll(".qc").forEach(el => el.onclick = () => {
+    const q = QUICK[+el.dataset.i]; document.body.classList.remove("side");
+    if(q.endsWith(": ")){ $("#input").value = q; $("#input").focus(); } else send(q);
+  });
+}
+function renderMemory(){
+  const used = [...new Set(S.memories.map(m => m.cat))];
+  $("#cats").innerHTML = ["all", ...used].map(c => `<button class="cat ${c===catFilter?"on":""}" data-c="${c}">${c}</button>`).join("");
+  $("#cats").querySelectorAll(".cat").forEach(el => el.onclick = () => { catFilter = el.dataset.c; renderMemory(); });
+  $("#memcount").textContent = S.memories.length ? "(" + S.memories.length + ")" : "";
+  const list = S.memories.filter(m => catFilter==="all" || m.cat===catFilter).sort((a,b) => b.t-a.t);
+  $("#memlist").innerHTML = list.length ? list.map(m => `<div class="mem"><div>${esc(m.text)}</div><div class="meta"><span>${esc(m.cat)} · ${fmtDate(m.t)}</span><span><button data-edit="${m.id}">edit</button><button data-del="${m.id}">delete</button></span></div></div>`).join("")
+    : `<div class="empty">Nothing saved yet. Just talk about your goals and decisions and they'll be remembered automatically. Say "forget …" to remove something.</div>`;
+  $("#memlist").querySelectorAll("[data-del]").forEach(el => el.onclick = async () => { await delItem("memories", el.dataset.del); renderMemory(); });
+  $("#memlist").querySelectorAll("[data-edit]").forEach(el => el.onclick = async () => {
+    const m = S.memories.find(x => x.id===el.dataset.edit); const t = prompt("Edit this memory:", m.text);
+    if(t && t.trim()){ m.text = t.trim().slice(0,500); m.t = Date.now(); await persist(); renderMemory(); }
+  });
+}
+function renderChat(){
+  const c = $("#chat");
+  if(!S.chat.length){
+    c.innerHTML = `<div class="hello"><h2>Your Board is ready.</h2><p>${S.profile ? "Your profile is loaded. Ask anything, or pick a quick command on the left." : "Open <b>Settings</b> to add your profile and API key first."}</p><p>Goals, decisions and updates you mention are remembered automatically between sessions.</p></div>`;
+    return;
+  }
+  c.innerHTML = S.chat.map(m => {
+    if(m.role==="user") return `<div class="msg user ${m.case?"case":""}"><div class="who">You${m.case?" · case mode":""}</div><div class="bubble">${esc(m.content)}</div></div>`;
+    const mem = m.mem && m.mem.length ? `<div class="remembered">🧠 ${m.mem.map(esc).join("<br>🧠 ")}</div>` : "";
+    return `<div class="msg ai ${m.err?"err":""} ${m.case?"case":""}"><div class="who">${esc(m.who||"Chief of Staff")}</div><div class="bubble">${md(m.content)}</div>${mem}</div>`;
+  }).join("");
+  c.scrollTop = c.scrollHeight;
+}
+
+/* ---------- AI ---------- */
+function systemPrompt(){
+  const b = BOARD.find(x => x.id===member);
+  const mems = S.memories.length ? S.memories.map(m => `- [${m.cat}] ${m.text} (saved ${fmtDate(m.t)})`).join("\n") : "(none yet)";
+  const board = BOARD.filter(x => x.id!=="auto").map(x => `${x.name}: ${x.prompt}`).join("\n");
+  return `You are the user's private AI Chief of Staff. You lead an AI Board of Directors made of: Chief Investment Officer, Risk Officer, Legal Counsel, Accountant, Mathematician and CBT Mindset Coach.
+
+HOW TO RESPOND
+${member==="auto"
+ ? "- Route each question to the Board member(s) best suited and label each contribution like **[Risk Officer]**. For broad questions ('Full Board review') give a short contribution from each relevant member, then a Chief of Staff synthesis with a clear recommended next step. Keep simple questions short: one voice, no padding."
+ : "- Answer ONLY as the " + b.name + ". Start with **[" + b.name + "]**. If the question really belongs to another member, answer briefly and say who should weigh in."}
+- Be direct and honest. Disagree when the user's idea conflicts with their own Charter or rules, and say exactly which rule. No flattery.
+- Use only facts and numbers found in the profile, saved memories or this conversation. If a needed number is missing, ask for it. Never invent figures, laws, citations or sources.
+- You are an AI giving structured thinking, not a licensed lawyer, accountant or financial advisor. For decisions with legal, tax or major financial consequences, say briefly what a qualified professional should confirm.
+- The user's own rules and priorities in their profile always take precedence over speed or speculative yield.
+- Be concise and scannable. Prefer short paragraphs and bullet points.
+
+BOARD MEMBER SCOPES
+${board}
+
+${member!=="auto" ? "ACTIVE MEMBER NOTES\n" + b.prompt + "\n\n" : ""}${caseMode ? "CASE MODE IS ON: the user is discussing a confidential case. Nothing from this exchange will be stored. Do not repeat identifying details unnecessarily, and remind the user once if they share real names or identifiers that they can use initials or placeholders.\n\n" : ""}TODAY: ${new Date().toDateString()}
+
+===== USER PROFILE / CHARTER (provided by the user) =====
+${S.profile.trim() || "(No profile loaded yet. Ask the user to add one in Settings, and meanwhile ask about their goals.)"}
+
+===== SAVED MEMORIES (goals, decisions and updates from earlier sessions) =====
+${mems}
+
+===== TRACKED DATA (exact numbers logged in the app; trust these over estimates) =====
+${trackedBlock()}`;
+}
+async function callAI(messages, json){
+  const key = (S.settings.apiKey||"").trim();
+  if(!key) throw new Error("No API key yet. Open Settings and paste your OpenAI API key.");
+  let r;
+  try{
+    r = await fetch("https://api.openai.com/v1/chat/completions", {method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer " + key},
+      body: JSON.stringify({model: S.settings.model||"gpt-4o-mini", messages, ...(json?{response_format:{type:"json_object"}}:{}), temperature: json?0:0.4})});
+  }catch(e){ throw new Error("Couldn't reach OpenAI. Check your internet connection and try again."); }
+  if(!r.ok){
+    let detail = ""; try{ detail = (await r.json()).error.message; }catch(e){}
+    if(r.status===401) throw new Error("OpenAI rejected the API key. Open Settings and paste it again (make sure there are no extra spaces).");
+    if(r.status===429) throw new Error("OpenAI says you're out of credit or over a limit. Add credit at platform.openai.com → Billing, then try again. " + detail);
+    if(r.status===404 || /model/i.test(detail)) throw new Error("OpenAI doesn't recognise the model name in Settings. Try gpt-4o-mini. " + detail);
+    throw new Error("OpenAI error " + r.status + ". " + detail);
+  }
+  const j = await r.json();
+  return j.choices[0].message.content || "";
+}
+async function extractMemory(userText, aiText){
+  const mems = S.memories.map(m => `${m.id} [${m.cat}] ${m.text}`).join("\n") || "(none)";
+  const p = `You maintain a long-term memory for a personal assistant. Decide what from the latest exchange must be remembered in future sessions.
+
+SAVE only durable, useful things the USER stated or decided: new goals, goal changes or progress, decisions made, plans, deadlines, rules or preferences, balances or figures they gave, fitness targets and results. Do NOT save: questions, small talk, the assistant's own advice or opinions, anything already in memory, or things the user did not say.
+UPDATE an existing memory (by its id) when the user changes or corrects it, instead of adding a duplicate.
+DELETE a memory (by id) if the user asks to forget it or says it is no longer true.
+Write each memory as one short, self-contained sentence in the third person ("User's goal is ..."). cat must be one of: ${CATS.join(", ")}.
+
+EXISTING MEMORIES:
+${mems}
+
+LATEST EXCHANGE:
+USER: ${userText}
+ASSISTANT: ${aiText.slice(0,1500)}
+
+LOG numeric tracker entries ONLY when the USER states a real measured result or purchase:
+- fitness: {"kind":"fitness","date":"YYYY-MM-DD","name":"Bodyweight","value":185,"unit":"lb"} for weights, lifts, run times, distances, workout minutes, etc. Keep names consistent with earlier entries (e.g. always "Bodyweight").
+- bitcoin: {"kind":"btc","date":"YYYY-MM-DD","btc":0.01,"usd":600} when the user says they bought or added BTC to their stack (usd = dollars paid, or null if not stated).
+Use today's date (${today()}) if no date is given. Never log plans, hypotheticals or the assistant's suggestions.
+
+Reply with JSON only: {"add":[{"text":"","cat":""}],"update":[{"id":"","text":""}],"delete":["id"],"log":[]}. Use empty arrays if nothing applies.`;
+  const out = await callAI([{role:"user", content:p}], true);
+  const ops = JSON.parse(out);
+  const notes = [];
+  for(const a of ops.add||[]) if(a && a.text && !S.memories.some(m => m.text.toLowerCase()===String(a.text).toLowerCase())){
+    S.memories.push({id:newId(), text:String(a.text).slice(0,500), cat:CATS.includes(a.cat)?a.cat:"note", t:Date.now()}); notes.push("Saved: " + a.text);
+  }
+  for(const u of ops.update||[]){ const m = S.memories.find(x => x.id===u.id); if(m && u.text){ m.text = String(u.text).slice(0,500); m.t = Date.now(); notes.push("Updated: " + u.text); } }
+  for(const id of ops.delete||[]){ const i = S.memories.findIndex(x => x.id===id); if(i>=0){ notes.push("Forgot: " + S.memories[i].text); S.memories.splice(i,1); } }
+  for(const l of ops.log||[]){
+    if(!l) continue; const date = /^\d{4}-\d{2}-\d{2}$/.test(l.date) ? l.date : today();
+    if(l.kind==="fitness" && l.name && isFinite(+l.value) && l.value!==null && l.value!==""){
+      const name = String(l.name).slice(0,40), value = +l.value, unit = String(l.unit||"").slice(0,12);
+      if(!S.fitness.some(f => f.date===date && f.name.toLowerCase()===name.toLowerCase() && f.value===value)){
+        S.fitness.push({id:newId(), t:Date.now(), date, name, value, unit}); notes.push("Logged fitness: " + name + " " + value + (unit?" "+unit:"") + " on " + date);
+      }
+    }else if(l.kind==="btc" && isFinite(+l.btc) && +l.btc>0){
+      const btc = +l.btc, usd = (l.usd===null || l.usd===undefined || l.usd==="" || !isFinite(+l.usd)) ? null : +l.usd;
+      if(!S.btc.some(b => b.date===date && b.btc===btc && b.usd===usd)){
+        S.btc.push({id:newId(), t:Date.now(), date, btc, usd}); notes.push("Logged Bitcoin: +" + btc + " BTC" + (usd!==null?" for "+money(usd):"") + " on " + date);
+      }
+    }
+  }
+  if(S.memories.length > 300) S.memories = S.memories.sort((a,b) => b.t-a.t).slice(0,300);
+  return notes;
+}
+async function send(text){
+  text = (text||"").trim(); if(!text || busy) return;
+  busy = true; $("#send").disabled = true; $("#input").value = ""; $("#input").style.height = "auto";
+  const cm = caseMode;
+  S.chat.push({role:"user", content:text, case:cm}); renderChat();
+  $("#chat").insertAdjacentHTML("beforeend", `<div class="msg ai typing" id="typing"><div class="bubble">Your Board is thinking…</div></div>`); $("#chat").scrollTop = 1e9;
+  const who = member==="auto" ? "Chief of Staff" : BOARD.find(x => x.id===member).name;
+  try{
+    const history = S.chat.slice(-20).map(m => ({role:m.role==="user"?"user":"assistant", content:m.content}));
+    const reply = await callAI([{role:"system", content:systemPrompt()}, ...history], false);
+    const msg = {role:"assistant", content:reply, who, case:cm};
+    S.chat.push(msg);
+    if(!cm){
+      try{ msg.mem = await extractMemory(text, reply); }catch(e){ /* memory step failed; the answer still stands */ }
+    }
+    await persist(); renderMemory();
+  }catch(e){
+    S.chat.push({role:"assistant", content:e.message, err:true, who:"Problem", case:true});
+  }
+  busy = false; $("#send").disabled = false; renderChat();
+}
+
+/* ---------- settings dialog ---------- */
+function openSettings(first){
+  $("#dlg-title").textContent = first ? "Set up your Chief of Staff" : "Settings";
+  $("#f-key").value = S.settings.apiKey || ""; $("#f-model").value = S.settings.model || "gpt-4o-mini";
+  $("#f-profile").value = S.profile || ""; $("#f-pass").value = ""; $("#f-nopass").checked = false;
+  $("#f-pass").placeholder = cryptoKey ? "Locked with a passphrase. Type a new one to change it, or leave blank to keep it." : "At least 8 characters. If you forget it, the data cannot be recovered.";
+  $("#passrow").style.display = cryptoKey ? "block" : "none";
+  $("#dlg-cancel").style.display = first ? "none" : ""; $("#firstlink").style.display = first ? "flex" : "none";
+  $("#dlg-err").textContent = ""; updProf(); $("#dlg").classList.add("on");
+}
+function updProf(){ const n = $("#f-profile").value.length; $("#profsize").textContent = n ? n.toLocaleString() + " characters loaded" + (n>60000 ? " (only the first 60,000 will be used)" : "") : ""; }
+async function saveSettings(){
+  const p = $("#f-pass").value;
+  if(p && p.length < 8){ $("#dlg-err").textContent = "Passphrase must be at least 8 characters."; return; }
+  S.settings.apiKey = $("#f-key").value.trim(); S.settings.model = $("#f-model").value.trim() || "gpt-4o-mini";
+  const newProf = $("#f-profile").value.slice(0,60000);
+  if(newProf !== S.profile){ S.profile = newProf; S.profileT = Date.now(); }
+  S.metaT = Date.now();
+  if($("#f-nopass").checked && !p){
+    if(S.sync.token){ $("#dlg-err").textContent = "Disconnect sync first. Sync needs a passphrase."; return; }
+    cryptoKey = null; salt = null; passMem = null;
+  }
+  if(p){ salt = crypto.getRandomValues(new Uint8Array(16)); cryptoKey = await deriveKey(p, salt); passMem = p; }
+  await persist(); $("#dlg").classList.remove("on"); renderAll();
+  if(!S.settings.apiKey) toast("Add your API key to start chatting.");
+}
+
+/* ---------- backup ---------- */
+async function exportBackup(){
+  await persist();
+  const blob = new Blob([JSON.stringify(await blobFromState(), null, 1)], {type:"application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "chief-of-staff-backup-" + new Date().toISOString().slice(0,10) + (cryptoKey?"-encrypted":"-UNENCRYPTED") + ".json";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast(cryptoKey ? "Encrypted backup downloaded. Keep it somewhere safe." : "Backup downloaded. It is NOT encrypted, so keep it private.");
+}
+async function importBackup(file){
+  try{
+    const o = JSON.parse(await file.text());
+    if(o.enc){
+      const pass = prompt("This backup is encrypted. Enter its passphrase:"); if(!pass) return;
+      const r = await decryptBlob(o, pass); S = normalize(r.state); cryptoKey = r.key; salt = r.salt; passMem = pass;
+    }else{ S = normalize(o.data || {}); }
+    await persist(); renderAll(); toast("Backup restored.");
+  }catch(e){ toast("That file couldn't be opened (wrong file or wrong passphrase)."); }
+}
+
+
+/* ---------- shared data helpers ---------- */
+const today = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); };
+const money = n => (n<0?"-":"") + "$" + Math.abs(n).toLocaleString("en-US", {maximumFractionDigits: Math.abs(n)<100?2:0});
+const btcFmt = n => (+n).toLocaleString("en-US", {maximumFractionDigits: 8});
+async function delItem(col, id){ S[col] = S[col].filter(x => x.id!==id); S.tomb[id] = Date.now(); const k = Object.keys(S.tomb); if(k.length>3000) k.sort((a,b)=>S.tomb[a]-S.tomb[b]).slice(0,k.length-3000).forEach(x => delete S.tomb[x]); await persist(); }
+
+/* ---------- live Bitcoin price ---------- */
+async function fetchPrice(){
+  let usd = null;
+  try{ const r = await fetch("https://api.coinbase.com/v2/prices/BTC-USD/spot"); if(r.ok) usd = +(await r.json()).data.amount; }catch(e){}
+  if(!isFinite(usd) || !usd){ usd = null;
+    try{ const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"); if(r.ok) usd = +(await r.json()).bitcoin.usd; }catch(e){}
+  }
+  if(usd){ price = {usd, t: Date.now()}; }
+  renderPrice(); if($("#trk").classList.contains("on")) renderTracker();
+}
+function renderPrice(){ $("#price").textContent = price ? "₿ " + money(price.usd) : "₿ price unavailable"; }
+function btcStats(){
+  const rows = S.btc.slice().sort((a,b) => a.date<b.date?-1:1);
+  const stack = rows.reduce((a,b) => a + b.btc, 0);
+  const costed = rows.filter(r => r.usd!==null && r.usd!==undefined);
+  const cost = costed.reduce((a,b) => a + b.usd, 0), costedBtc = costed.reduce((a,b) => a + b.btc, 0);
+  const avg = costedBtc ? cost/costedBtc : null;
+  const value = price ? stack*price.usd : null;
+  const pl = price && costedBtc ? costedBtc*price.usd - cost : null;
+  return {rows, stack, cost, costedBtc, avg, value, pl, plPct: pl!==null && cost ? pl/cost*100 : null};
+}
+function fitMetrics(){
+  const m = {}; for(const f of S.fitness){ (m[f.name.toLowerCase()] = m[f.name.toLowerCase()] || {name:f.name, rows:[]}).rows.push(f); }
+  Object.values(m).forEach(x => x.rows.sort((a,b) => a.date<b.date?-1:a.date>b.date?1:a.t-b.t)); return m;
+}
+function trackedBlock(){
+  const b = btcStats(), L = [];
+  L.push("BITCOIN: " + (S.btc.length ? `stack ${btcFmt(b.stack)} BTC across ${S.btc.length} logged entries` + (b.avg ? `; USD paid ${money(b.cost)} for ${btcFmt(b.costedBtc)} BTC (average cost ${money(b.avg)})` : "") : "no entries logged yet")
+    + (S.btcTarget ? `; user's stack target ${btcFmt(S.btcTarget)} BTC (${(b.stack/S.btcTarget*100).toFixed(1)}% reached)` : "")
+    + (price ? `; live price ${money(price.usd)} (fetched ${new Date(price.t).toLocaleTimeString()})` + (b.value!==null ? `; stack value ${money(b.value)}` : "") + (b.pl!==null ? `; unrealised P/L on costed coins ${money(b.pl)}` : "") : "; live price unavailable right now"));
+  const fm = Object.values(fitMetrics());
+  L.push("FITNESS: " + (fm.length ? fm.map(x => { const f = x.rows[0], l = x.rows[x.rows.length-1]; return `${x.name}: latest ${l.value}${l.unit?" "+l.unit:""} on ${l.date}` + (x.rows.length>1 ? ` (first ${f.value} on ${f.date}; ${x.rows.length} entries)` : ""); }).join(" | ") : "no entries logged yet"));
+  return L.join("\n");
+}
+
+/* ---------- SVG line chart (no libraries) ---------- */
+function lineChart(pts, o){
+  o = o||{}; const W=640, H=230, L=54, R=14, T=14, B=30;
+  if(!pts.length) return `<div class="empty" style="padding:30px;text-align:center">No entries yet. Add one below, or just tell the assistant in chat.</div>`;
+  let xs = pts.map(p => p.x), ys = pts.map(p => p.y); if(o.target) ys = ys.concat([o.target]);
+  let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  if(x0===x1){ x0 -= 864e5*3; x1 += 864e5*3; } let pad = (y1-y0)*0.12 || Math.abs(y1)*0.1 || 1; y0 = Math.max(o.zero?0:-Infinity, y0-pad); y1 += pad;
+  const X = x => L + (x-x0)/(x1-x0)*(W-L-R), Y = y => T + (1-(y-y0)/(y1-y0))*(H-T-B);
+  const fmt = o.fmt || (v => (+v.toPrecision(4)).toLocaleString());
+  let g = ""; for(let i=0;i<=3;i++){ const v = y0 + (y1-y0)*i/3, y = Y(v); g += `<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#2a3344"/><text x="${L-6}" y="${y+4}" text-anchor="end" font-size="11" fill="#8d99ad">${esc(fmt(v))}</text>`; }
+  const d = s => new Date(s).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"2-digit"});
+  g += `<text x="${L}" y="${H-8}" font-size="11" fill="#8d99ad">${d(x0)}</text><text x="${W-R}" y="${H-8}" text-anchor="end" font-size="11" fill="#8d99ad">${d(x1)}</text>`;
+  if(o.target) g += `<line x1="${L}" x2="${W-R}" y1="${Y(o.target)}" y2="${Y(o.target)}" stroke="#4b8fd4" stroke-dasharray="5 4"/><text x="${W-R}" y="${Y(o.target)-5}" text-anchor="end" font-size="11" fill="#4b8fd4">target ${esc(fmt(o.target))}</text>`;
+  const path = pts.map((p,i) => (i?"L":"M") + X(p.x).toFixed(1) + " " + Y(p.y).toFixed(1)).join(" ");
+  g += `<path d="${path}" fill="none" stroke="#d4a84b" stroke-width="2.5" stroke-linejoin="round"/>`;
+  g += pts.map(p => `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="4" fill="#d4a84b"><title>${esc(p.label)}</title></circle>`).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label||"chart")}">${g}</svg>`;
+}
+
+/* ---------- trackers ---------- */
+function openTracker(tab){ trkTab = tab; $("#trk").classList.add("on"); document.body.classList.remove("side"); renderTracker(); }
+function renderTracker(){
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.dataset.tab===trkTab));
+  $("#trk-body").innerHTML = trkTab==="btc" ? btcHTML() : fitHTML();
+  const body = $("#trk-body");
+  body.querySelectorAll("[data-del]").forEach(el => el.onclick = async () => { await delItem(el.dataset.col, el.dataset.del); renderTracker(); });
+  if(trkTab==="btc"){
+    $("#btcform").onsubmit = async e => { e.preventDefault();
+      const btc = +$("#b-btc").value, u = $("#b-usd").value;
+      if(!(btc>0)){ toast("Enter how much BTC you added."); return; }
+      S.btc.push({id:newId(), t:Date.now(), date:$("#b-date").value||today(), btc, usd: u===""?null:+u}); await persist(); renderTracker(); };
+    $("#b-target-save").onclick = async () => { S.btcTarget = Math.max(0, +$("#b-target").value||0); S.metaT = Date.now(); await persist(); renderTracker(); };
+  }else{
+    $("#fitform").onsubmit = async e => { e.preventDefault();
+      const name = $("#f-name").value.trim(), v = $("#f-val").value;
+      if(!name || v===""){ toast("Enter a name and a number."); return; }
+      S.fitness.push({id:newId(), t:Date.now(), date:$("#f-date").value||today(), name:name.slice(0,40), value:+v, unit:$("#f-unit").value.trim().slice(0,12)}); fitMetric = name; await persist(); renderTracker(); };
+    $("#fit-pick").onchange = e => { fitMetric = e.target.value; renderTracker(); };
+  }
+}
+function btcHTML(){
+  const b = btcStats(); let run = 0;
+  const pts = b.rows.map(r => { run += r.btc; return {x:new Date(r.date+"T12:00:00").getTime(), y:run, label:r.date + ": " + btcFmt(run) + " BTC total"}; });
+  const pl = b.pl===null ? "—" : `<span class="${b.pl>=0?"pos":"neg"}">${money(b.pl)}${b.plPct!==null?" ("+b.plPct.toFixed(1)+"%)":""}</span>`;
+  const prog = S.btcTarget ? Math.min(100, b.stack/S.btcTarget*100) : 0;
+  return `<h2>Bitcoin tracker</h2><p class="sub">Your stack, cost basis and live value. Tell the assistant "I bought 0.01 BTC for $600" and it logs it for you.</p>
+  <div class="stats">
+   <div class="stat"><small>Stack</small><b>${btcFmt(b.stack)} BTC</b></div>
+   <div class="stat"><small>Live price</small><b>${price?money(price.usd):"unavailable"}</b></div>
+   <div class="stat"><small>Stack value</small><b>${b.value===null?"—":money(b.value)}</b></div>
+   <div class="stat"><small>Avg cost / BTC</small><b>${b.avg?money(b.avg):"—"}</b></div>
+   <div class="stat"><small>Unrealised P/L</small><b>${pl}</b></div>
+  </div>
+  ${S.btcTarget ? `<div style="font-size:13px;color:var(--mute)">Goal: ${btcFmt(S.btcTarget)} BTC · ${prog.toFixed(1)}% there</div><div class="bar"><i style="width:${prog}%"></i></div>` : ""}
+  ${lineChart(pts, {target:S.btcTarget||null, fmt:v => (+v.toPrecision(3)).toString(), label:"Bitcoin stack over time", zero:true})}
+  <form id="btcform" class="frm"><div><label>Date</label><input type="date" id="b-date" value="${today()}"></div><div><label>BTC added</label><input type="number" id="b-btc" step="any" min="0" placeholder="0.01"></div><div><label>USD paid (optional)</label><input type="number" id="b-usd" step="any" min="0" placeholder="600"></div><button class="btn primary">Add</button></form>
+  <div class="frm"><div><label>My stack goal (BTC)</label><input type="number" id="b-target" step="any" min="0" value="${S.btcTarget||""}" placeholder="e.g. 1"></div><button class="btn" id="b-target-save" type="button">Save goal</button></div>
+  <table class="t"><tr><th>Date</th><th>BTC</th><th>USD paid</th><th></th></tr>${b.rows.slice().reverse().slice(0,40).map(r => `<tr><td>${esc(r.date)}</td><td>${btcFmt(r.btc)}</td><td>${r.usd===null||r.usd===undefined?"—":money(r.usd)}</td><td><button class="cat" data-del="${r.id}" data-col="btc">delete</button></td></tr>`).join("")}</table>
+  <div class="note">Price from Coinbase (CoinGecko backup), refreshed every minute. Profit/loss only counts entries where you gave the USD paid. Not tax or investment advice.</div>`;
+}
+function fitHTML(){
+  const m = fitMetrics(), names = Object.values(m).sort((a,b) => b.rows[b.rows.length-1].t - a.rows[a.rows.length-1].t);
+  let cur = names.find(x => x.name.toLowerCase()===fitMetric.toLowerCase()) || names[0];
+  let chart = lineChart([], {}), stats = "";
+  if(cur){
+    const u = cur.rows[cur.rows.length-1].unit || "";
+    chart = lineChart(cur.rows.map(r => ({x:new Date(r.date+"T12:00:00").getTime(), y:r.value, label:r.date + ": " + r.value + (r.unit?" "+r.unit:"")})), {fmt:v => (+v.toPrecision(4)).toString(), label:cur.name + " over time"});
+    const f = cur.rows[0], l = cur.rows[cur.rows.length-1], ch = l.value - f.value;
+    stats = `<div class="stats"><div class="stat"><small>Latest</small><b>${l.value} ${esc(u)}</b></div><div class="stat"><small>First</small><b>${f.value} ${esc(f.unit||u)}</b></div><div class="stat"><small>Change</small><b>${ch>0?"+":""}${+ch.toFixed(2)} ${esc(u)}</b></div><div class="stat"><small>Entries</small><b>${cur.rows.length}</b></div></div>`;
+  }
+  const since = new Date(Date.now()-30*864e5).toISOString().slice(0,10), recent = S.fitness.filter(f => f.date>=since).length;
+  return `<h2>Fitness tracker</h2><p class="sub">Tell the assistant "bench press 225 lb today" or "weighed in at 184" and it logs it. ${recent} entries in the last 30 days.</p>
+  ${names.length ? `<label>Chart</label><select id="fit-pick">${names.map(x => `<option ${cur&&x===cur?"selected":""} value="${esc(x.name)}">${esc(x.name)} (${x.rows.length})</option>`).join("")}</select>` : ""}
+  ${stats}${chart}
+  <form id="fitform" class="frm"><div><label>Date</label><input type="date" id="f-date" value="${today()}"></div><div><label>What</label><input type="text" id="f-name" list="fitnames" placeholder="Bodyweight, Bench press, 5K run…" value="${cur?esc(cur.name):""}"></div><datalist id="fitnames">${names.map(x => `<option value="${esc(x.name)}">`).join("")}</datalist><div><label>Number</label><input type="number" id="f-val" step="any"></div><div><label>Unit</label><input type="text" id="f-unit" placeholder="lb, min, mi" value="${cur?esc(cur.rows[cur.rows.length-1].unit||""):""}"></div><button class="btn primary">Add</button></form>
+  <table class="t"><tr><th>Date</th><th>What</th><th>Result</th><th></th></tr>${S.fitness.slice().sort((a,b) => a.date<b.date?1:a.date>b.date?-1:b.t-a.t).slice(0,40).map(r => `<tr><td>${esc(r.date)}</td><td>${esc(r.name)}</td><td>${r.value} ${esc(r.unit||"")}</td><td><button class="cat" data-del="${r.id}" data-col="fitness">delete</button></td></tr>`).join("")}</table>`;
+}
+
+/* ---------- sync (end-to-end encrypted, via a private GitHub gist) ---------- */
+const GH = "https://api.github.com", GF = "chief-of-staff.enc.json";
+async function gh(path, opt){
+  let r; try{ r = await fetch(GH + path, {...(opt||{}), headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer " + S.sync.token, "Content-Type":"application/json"}}); }
+  catch(e){ throw new Error("Couldn't reach GitHub. Check your internet connection."); }
+  if(r.status===401) throw Object.assign(new Error("GitHub rejected the token. Create a new token and reconnect."), {status:401});
+  if(r.status===403) throw Object.assign(new Error("GitHub refused the request (token permissions or rate limit). Make sure the token has the \"gist\" permission."), {status:403});
+  if(!r.ok) throw Object.assign(new Error("GitHub error " + r.status + "."), {status:r.status});
+  return r.json();
+}
+async function encJSON(obj, key, sl){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify(obj))));
+  return {v:1, enc:true, salt:b64(sl), iv:b64(iv), ct:b64(ct)};
+}
+async function decJSON(o, key){ return JSON.parse(dec.decode(await crypto.subtle.decrypt({name:"AES-GCM", iv:unb64(o.iv)}, key, unb64(o.ct)))); }
+function syncState(){ return {profile:S.profile, profileT:S.profileT, memories:S.memories, fitness:S.fitness, btc:S.btc, tomb:S.tomb, metaT:S.metaT, meta:{apiKey:S.settings.apiKey, model:S.settings.model, btcTarget:S.btcTarget}}; }
+function mergeState(r){
+  if(!r || typeof r!=="object") return;
+  const tomb = {...S.tomb}; for(const [k,v] of Object.entries(r.tomb||{})) tomb[k] = Math.max(tomb[k]||0, v);
+  for(const col of ["memories","fitness","btc"]){
+    const map = new Map();
+    for(const it of [...(S[col]||[]), ...(Array.isArray(r[col])?r[col]:[])]){ if(!it || !it.id) continue; const c = map.get(it.id); if(!c || (it.t||0) > (c.t||0)) map.set(it.id, it); }
+    S[col] = [...map.values()].filter(it => !(tomb[it.id] >= (it.t||0)));
+  }
+  S.tomb = tomb;
+  if((r.profileT||0) > (S.profileT||0)){ S.profile = r.profile||""; S.profileT = r.profileT; }
+  if((r.metaT||0) > (S.metaT||0) && r.meta){ S.settings.apiKey = r.meta.apiKey || S.settings.apiKey; S.settings.model = r.meta.model || S.settings.model; S.btcTarget = +r.meta.btcTarget || 0; S.metaT = r.metaT; }
+}
+async function pullRemote(id){
+  const g = await gh("/gists/" + id), f = g.files && g.files[GF];
+  if(!f) throw Object.assign(new Error("gone"), {status:404});
+  if(f.truncated) throw new Error("The synced file is too large.");
+  const o = JSON.parse(f.content);
+  const key = (salt && o.salt===b64(salt)) ? cryptoKey : await deriveKey(passMem||"", unb64(o.salt));
+  try{ return await decJSON(o, key); }
+  catch(e){ throw new Error("The synced data was locked with a different passphrase than this device uses. Use the same passphrase on every device."); }
+}
+function setSyncMsg(t, bad){ const el = $("#syncstat"); el.textContent = t; el.className = "empty " + (bad?"syncbad":"syncok"); const st = $("#s-status"); if(st) st.textContent = t; }
+function renderSyncStat(){
+  const on = !!S.sync.token;
+  $("#sync-off").style.display = on ? "none" : ""; $("#sync-on").style.display = on ? "" : "none";
+  $("#s-passrow").style.display = cryptoKey ? "none" : "";
+  if(!on){ $("#syncstat").textContent = "Sync is off. Memory lives on this device only."; $("#syncstat").className = "empty"; }
+  else if(S.sync.last){ setSyncMsg("Sync on · last synced " + new Date(S.sync.last).toLocaleString(), false); }
+  else setSyncMsg("Sync on · waiting for first sync", false);
+}
+function scheduleSync(){ if(!S.sync.token || !cryptoKey) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(false), 4000); }
+async function syncNow(manual, retried){
+  if(syncing || !S.sync.token || !cryptoKey) return;
+  syncing = true; lastSyncTry = Date.now(); setSyncMsg("Syncing…", false);
+  try{
+    if(!S.sync.gistId){ const l = await gh("/gists?per_page=100"); const g = l.find(x => x.files && x.files[GF]); S.sync.gistId = g ? g.id : null; }
+    if(S.sync.gistId){ mergeState(await pullRemote(S.sync.gistId)); }
+    const body = {files:{[GF]:{content: JSON.stringify(await encJSON(syncState(), cryptoKey, salt))}}};
+    if(S.sync.gistId){ await gh("/gists/" + S.sync.gistId, {method:"PATCH", body:JSON.stringify(body)}); }
+    else{ const g = await gh("/gists", {method:"POST", body:JSON.stringify({description:"Encrypted app data (unreadable without your passphrase)", public:false, ...body})}); S.sync.gistId = g.id; }
+    S.sync.last = Date.now(); await persistLocal(); renderAll();
+    if(manual) toast("Synced.");
+  }catch(e){
+    if(e.status===404 && S.sync.gistId && !retried){ S.sync.gistId = null; syncing = false; return syncNow(manual, true); }
+    setSyncMsg("Sync problem: " + e.message, true); if(manual) toast(e.message);
+  }
+  syncing = false;
+}
+async function connectSync(){
+  const token = $("#s-token").value.trim(), pass = $("#s-pass").value, err = $("#s-err"); err.textContent = "";
+  if(!token){ err.textContent = "Paste your GitHub token first."; return; }
+  if(!cryptoKey && pass.length < 8){ err.textContent = "Enter your passphrase (at least 8 characters). Use the same one on every device."; return; }
+  const prev = {token:S.sync.token, gistId:S.sync.gistId}, prevKey = {cryptoKey, salt, passMem};
+  S.sync = {token}; $("#s-connect").disabled = true;
+  try{
+    const l = await gh("/gists?per_page=100");   // also verifies the token works
+    if(!cryptoKey){
+      const g = l.find(x => x.files && x.files[GF]);
+      if(g){
+        const full = await gh("/gists/" + g.id), o = JSON.parse(full.files[GF].content), key = await deriveKey(pass, unb64(o.salt));
+        let st; try{ st = await decJSON(o, key); }catch(e){ throw new Error("That passphrase doesn't match the data already synced. Use the passphrase from your other device."); }
+        cryptoKey = key; salt = unb64(o.salt); passMem = pass; S.sync.gistId = g.id; mergeState(st);
+      }else{ salt = crypto.getRandomValues(new Uint8Array(16)); cryptoKey = await deriveKey(pass, salt); passMem = pass; }
+    }
+    await persistLocal(); $("#syncdlg").classList.remove("on"); $("#s-token").value = ""; $("#s-pass").value = "";
+    renderAll(); await syncNow(true);
+  }catch(e){ S.sync = prev.token ? prev : {}; ({cryptoKey, salt, passMem} = prevKey); err.textContent = e.message; }
+  $("#s-connect").disabled = false;
+}
+
+/* ---------- wiring ---------- */
+$("#composer").onsubmit = e => { e.preventDefault(); send($("#input").value); };
+$("#input").addEventListener("keydown", e => { if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send($("#input").value); } });
+$("#input").addEventListener("input", e => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight,160) + "px"; });
+$("#menu").onclick = () => document.body.classList.toggle("side");
+$("#chat").onclick = () => document.body.classList.remove("side");
+$("#casetoggle").onchange = e => { caseMode = e.target.checked; document.body.classList.toggle("case", caseMode); };
+$("#btn-settings").onclick = () => openSettings(false);
+$("#dlg-save").onclick = saveSettings;
+$("#dlg-cancel").onclick = () => $("#dlg").classList.remove("on");
+$("#f-profile").addEventListener("input", updProf);
+$("#btn-loadtxt").onclick = () => $("#proffile").click();
+$("#proffile").onchange = async e => { const f = e.target.files[0]; if(f){ $("#f-profile").value = (await f.text()); updProf(); } e.target.value = ""; };
+$("#btn-btc").onclick = () => openTracker("btc");
+$("#btn-fit").onclick = () => openTracker("fit");
+$("#trk-close").onclick = () => $("#trk").classList.remove("on");
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => { trkTab = t.dataset.tab; renderTracker(); });
+$("#btn-sync").onclick = () => { document.body.classList.remove("side"); renderSyncStat(); $("#s-err").textContent = ""; $("#syncdlg").classList.add("on"); };
+$("#btn-already").onclick = () => { $("#dlg").classList.remove("on"); $("#btn-sync").click(); };
+$("#s-close").onclick = $("#s-close2").onclick = () => { $("#syncdlg").classList.remove("on"); if(!S.settings.apiKey && !S.profile && !S.memories.length && !S.sync.token) openSettings(true); };
+$("#s-connect").onclick = connectSync;
+$("#s-now").onclick = () => syncNow(true);
+$("#s-off").onclick = async () => { if(!confirm("Stop syncing this device? The encrypted copy stays in your GitHub account.")) return; S.sync = {}; await persistLocal(); renderSyncStat(); $("#syncdlg").classList.remove("on"); toast("Sync disconnected."); };
+$("#btn-privacy").onclick = () => $("#priv").classList.add("on");
+$("#priv-close").onclick = () => $("#priv").classList.remove("on");
+$("#btn-export").onclick = exportBackup;
+$("#btn-import").onclick = () => $("#importfile").click();
+$("#importfile").onchange = e => { if(e.target.files[0]) importBackup(e.target.files[0]); e.target.value = ""; };
+$("#btn-addmem").onclick = async () => {
+  const t = prompt("What should be remembered?"); if(!t || !t.trim()) return;
+  S.memories.push({id:newId(), text:t.trim().slice(0,500), cat:"note", t:Date.now()}); await persist(); renderMemory();
+};
+(function mic(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition, b = $("#mic");
+  if(!SR){ b.style.display = "none"; return; }
+  b.onclick = () => { const r = new SR(); r.lang = "en-US"; r.onresult = e => { $("#input").value += (($("#input").value?" ":"") + e.results[0][0].transcript); }; r.onerror = () => toast("Couldn't hear that. Check microphone permission."); r.start(); toast("Listening…"); };
+})();
+$("#lockform").onsubmit = async e => {
+  e.preventDefault(); $("#lockerr").textContent = "";
+  try{
+    const r = await decryptBlob(pendingLock, $("#lockpass").value);
+    passMem = $("#lockpass").value; S = normalize(r.state); cryptoKey = r.key; salt = r.salt; $("#lockpass").value = "";
+    $("#lock").classList.remove("on"); start();
+  }catch(err){ $("#lockerr").textContent = "That passphrase didn't work. Try again."; }
+};
+
+/* ---------- boot ---------- */
+function renderAll(){ renderBoard(); renderMemory(); renderChat(); renderSyncStat(); renderPrice(); }
+function start(){
+  renderAll(); fetchPrice(); setInterval(fetchPrice, 60000);
+  if(!S.settings.apiKey && !S.profile && !S.memories.length) openSettings(true);
+  if(S.sync.token) syncNow(false);
+  document.addEventListener("visibilitychange", () => { if(!document.hidden){ fetchPrice(); if(S.sync.token && Date.now()-lastSyncTry > 30000) syncNow(false); } });
+}
+(function boot(){
+  if(!window.crypto || !crypto.subtle){ showWarn("This page must be opened over https:// (a normal web link) for encryption to work."); }
+  let raw = null;
+  try{ raw = localStorage.getItem(LS); }catch(e){ showWarn("Your browser is blocking storage, so nothing can be remembered. Don't use a private/incognito window."); }
+  if(!raw){ start(); return; }
+  let o; try{ o = JSON.parse(raw); }catch(e){ start(); return; }
+  if(o.enc){ pendingLock = o; $("#lock").classList.add("on"); setTimeout(() => $("#lockpass").focus(), 50); }
+  else{ S = normalize(o.data || {}); start(); }
+})();
+</script>
+</body>
+</html>
