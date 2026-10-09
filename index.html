@@ -55,6 +55,8 @@ section#chatwrap{flex:1;display:flex;flex-direction:column;min-width:0}
 .bubble code{background:#0b0e13;padding:1px 5px;border-radius:4px;font-size:.9em}
 .bubble pre{background:#0b0e13;padding:8px;border-radius:6px;overflow-x:auto;margin:.4em 0}
 .msg.case .bubble{border-color:var(--danger)}
+.memfail{font-size:12.5px;color:#ffd9a8;background:#3a2a10;border:1px solid #a8741f;border-radius:8px;padding:7px 10px;margin-top:6px}
+.memfail button{margin-left:8px}
 .remembered{font-size:12px;color:var(--ok);margin-top:5px}
 .err .bubble{border-color:var(--danger);color:#ffd5d2}
 .hello{max-width:640px;margin:8vh auto 0;text-align:center;color:var(--mute)}
@@ -117,7 +119,7 @@ input[type=date],input[type=number],select{width:100%;background:var(--panel2);c
   <label class="toggle" title="Case mode: nothing from this chat is saved to memory or kept after you close the page"><input type="checkbox" id="casetoggle"><span>Case mode</span>🔒</label>
   <button class="btn" id="btn-settings">Settings</button>
 </header>
-<div id="casebar">🔒 CASE MODE ON — nothing you type here is saved to memory or kept on this device. It is still sent to the AI provider to get an answer. Avoid real names and identifiers of case subjects.</div>
+<div id="casebar">🔒 CASE MODE ON. Case messages are not saved to memory and are not kept after you close or reload this page. They are sent to the AI provider (together with your profile and saved memories) to get an answer, and they stay on screen until you reload. While Case mode is on, earlier case messages are included as context. When you turn it off, they are no longer included in later requests. Use initials or placeholders instead of real names.</div>
 <div id="warnbar"></div>
 <main>
   <aside>
@@ -169,6 +171,7 @@ input[type=date],input[type=number],select{width:100%;background:var(--panel2);c
   <input type="password" id="f-pass" placeholder="At least 8 characters. If you forget it, the data cannot be recovered." autocomplete="new-password">
   <div id="passrow" style="display:none;margin-top:6px"><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="f-nopass"> Remove my passphrase (store unlocked)</label></div>
   <div class="note"><b>What this does:</b> with a passphrase, your profile, memories and API key are encrypted on this device and you unlock them each time you open the page. Without one, they are stored as plain text in this browser.</div>
+  <div class="note"><b>Testing aid:</b> <button type="button" class="btn" id="btn-failtest">Make the next memory save fail once</button><br>Use this to see the warning and the Retry button working. It resets itself.</div>
   <div class="bad" id="dlg-err"></div>
   <div class="row"><button class="btn primary" id="dlg-save">Save and start</button><button class="btn" id="dlg-demo" title="Test the app without an API key">🧪 Try the demo (no key needed)</button><button class="btn" id="dlg-cancel">Cancel</button><span style="flex:1"></span><button class="btn" id="btn-privacy">What happens to my data?</button></div>
   <div class="row" id="firstlink" style="display:none"><button class="btn" id="btn-already">Already set up on another device? Connect sync instead</button></div>
@@ -184,7 +187,7 @@ input[type=date],input[type=number],select{width:100%;background:var(--panel2);c
   <div class="note"><b>Sync (only if you turn it on):</b> your data is encrypted on your device and the encrypted file is stored in your own private GitHub gist. GitHub sees only ciphertext. A strong passphrase matters, because it is the only thing protecting that file if someone ever got the gist link.</div>
   <div class="note"><b>Gemini free tier:</b> Google may use content sent with a free Gemini key to improve its products. Use a free Gemini key only for testing with fictional data.</div>
   <div class="note"><b>OpenAI's retention:</b> by default OpenAI says API data is not used to train its models and may be kept up to 30 days for abuse monitoring, then deleted. Check OpenAI's current policy and your account's data controls, as terms can change.</div>
-  <div class="note"><b>Case mode:</b> keeps case chats out of memory and out of storage on this device. They are still sent to OpenAI to get an answer. For privileged or sensitive case material, strip names and identifying details first, and follow your department's and bar's rules on AI use.</div>
+  <div class="note"><b>Case mode:</b> messages sent in Case mode are not saved to memory, are not written to storage on this device, and are gone when you reload or close the page. While Case mode is on, they are sent to the AI provider, along with your profile and saved memories, and earlier case messages are included as context for follow-up questions. They stay visible on screen until you reload. When you turn Case mode off, case messages are no longer included in the context sent with ordinary messages. The provider still receives them while Case mode is on and handles them under its own retention policy. Use initials or placeholders instead of real names, and follow your department's and bar's rules on AI use.</div>
   <div class="note"><b>Limits:</b> memory is per browser and per device. Clearing browser data erases it, so use <b>Backup</b> regularly. Anyone who can use your unlocked browser can read it. Use a passphrase. This tool gives structured thinking, not legal, tax or investment advice.</div>
   <div class="row"><button class="btn primary" id="priv-close">Close</button></div>
 </div></div>
@@ -264,7 +267,7 @@ const QUICK = [
 /* ---------- state ---------- */
 let S = blank();
 function blank(){ return {profile:"", profileT:0, memories:[], fitness:[], btc:[], tomb:{}, btcTarget:0, metaT:0, sync:{}, chat:[], settings:{provider:"openai", apiKey:"", model:"gpt-4o-mini"}}; }
-let cryptoKey = null, salt = null, passMem = null, price = null, syncing = false, lastSyncTry = 0, syncTimer = null, trkTab = "btc", fitMetric = "";
+let testFailNext = false, cryptoKey = null, salt = null, passMem = null, price = null, syncing = false, lastSyncTry = 0, syncTimer = null, trkTab = "btc", fitMetric = "";
 let member = "auto", catFilter = "all", busy = false, caseMode = false, pendingLock = null;
 const $ = s => document.querySelector(s);
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -282,7 +285,7 @@ function md(s){
   return h;
 }
 const newId = () => "m" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-const b64 = u8 => btoa(String.fromCharCode(...u8));
+const b64 = u8 => { let t = ""; for(let i = 0; i < u8.length; i += 0x8000) t += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(t); };
 const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 function toast(t){ const el=$("#toast"); el.textContent=t; el.style.display="block"; clearTimeout(toast.t); toast.t=setTimeout(()=>el.style.display="none",3500); }
 function fmtDate(t){ return new Date(t).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); }
@@ -303,7 +306,7 @@ async function blobFromState(){
 }
 async function persistLocal(){
   try{ localStorage.setItem(LS, JSON.stringify(await blobFromState())); }
-  catch(e){ showWarn("Your browser is blocking or has filled its storage, so memory can't be saved. Don't use a private/incognito window, and use Backup often."); }
+  catch(e){ showWarn("Your latest changes could NOT be saved on this device (" + ((e && e.name) || "error") + "). If this keeps happening: don't use a private/incognito window, free up browser storage, and download a Backup now."); }
 }
 async function persist(){ await persistLocal(); scheduleSync(); }
 async function decryptBlob(o, pass){
@@ -352,7 +355,7 @@ function renderChat(){
   }
   c.innerHTML = S.chat.map(m => {
     if(m.role==="user") return `<div class="msg user ${m.case?"case":""}"><div class="who">You${m.case?" · case mode":""}</div><div class="bubble">${esc(m.content)}</div></div>`;
-    const mem = m.mem && m.mem.length ? `<div class="remembered">🧠 ${m.mem.map(esc).join("<br>🧠 ")}</div>` : "";
+    const mem = m.memFail ? `<div class="memfail">⚠ <b>Not saved to memory.</b> ${esc(m.memFail.err)} Your reply above is fine, but nothing from this exchange was remembered. <button class="btn" data-retry="${esc(m.id||"")}">Retry saving</button></div>` : (m.mem && m.mem.length ? `<div class="remembered">🧠 ${m.mem.map(esc).join("<br>🧠 ")}</div>` : "");
     return `<div class="msg ai ${m.err?"err":""} ${m.case?"case":""}"><div class="who">${esc(m.who||"Chief of Staff")}</div><div class="bubble">${md(m.content)}</div>${mem}</div>`;
   }).join("");
   c.scrollTop = c.scrollHeight;
@@ -441,11 +444,12 @@ async function callGemini(messages, json, key){
   return text;
 }
 async function extractMemory(userText, aiText){
+  if(testFailNext){ testFailNext = false; throw new Error("This was a simulated failure (test mode)."); }
   const mems = S.memories.map(m => `${m.id} [${m.cat}] ${m.text}`).join("\n") || "(none)";
   const p = `You maintain a long-term memory for a personal assistant. Decide what from the latest exchange must be remembered in future sessions.
 
 SAVE only durable, useful things the USER stated or decided: new goals, goal changes or progress, decisions made, plans, deadlines, rules or preferences, balances or figures they gave, fitness targets and results. Do NOT save: questions, small talk, the assistant's own advice or opinions, anything already in memory, or things the user did not say.
-UPDATE an existing memory (by its id) when the user changes or corrects it, instead of adding a duplicate.
+UPDATE an existing memory (by its id) when the user changes or corrects it, instead of adding a duplicate. If the new statement is about the same goal or subject as an existing memory (for example the same property or Bitcoin goal with a new amount or deadline), you MUST update that memory. Never add a second memory with a different amount or date for the same subject.
 DELETE a memory (by id) if the user asks to forget it or says it is no longer true.
 Write each memory as one short, self-contained sentence in the third person ("User's goal is ..."). cat must be one of: ${CATS.join(", ")}.
 
@@ -463,28 +467,30 @@ Use today's date (${today()}) if no date is given. Never log plans, hypothetical
 
 Reply with JSON only: {"add":[{"text":"","cat":""}],"update":[{"id":"","text":""}],"delete":["id"],"log":[]}. Use empty arrays if nothing applies.`;
   const out = await callAI([{role:"user", content:p}], true);
-  const ops = JSON.parse(out);
+  let ops; try{ ops = JSON.parse(out); }catch(e){ throw new Error("The AI returned an unreadable answer for the memory step."); }
+  if(!ops || typeof ops !== "object") throw new Error("The AI returned an unexpected answer for the memory step.");
+  for(const k of ["add","update","delete","log"]) ops[k] = Array.isArray(ops[k]) ? ops[k] : [];
   const notes = [];
   for(const a of ops.add||[]) if(a && a.text && !S.memories.some(m => m.text.toLowerCase()===String(a.text).toLowerCase())){
     S.memories.push({id:newId(), text:String(a.text).slice(0,500), cat:CATS.includes(a.cat)?a.cat:"note", t:Date.now()}); notes.push("Saved: " + a.text);
   }
   for(const u of ops.update||[]){ const m = S.memories.find(x => x.id===u.id); if(m && u.text){ m.text = String(u.text).slice(0,500); m.t = Date.now(); notes.push("Updated: " + u.text); } }
-  for(const id of ops.delete||[]){ const i = S.memories.findIndex(x => x.id===id); if(i>=0){ notes.push("Forgot: " + S.memories[i].text); S.memories.splice(i,1); } }
+  for(const id of ops.delete||[]){ const i = S.memories.findIndex(x => x.id===id); if(i>=0){ notes.push("Forgot: " + S.memories[i].text); S.tomb[id] = Date.now(); S.memories.splice(i,1); } }
   for(const l of ops.log||[]){
     if(!l) continue; const date = /^\d{4}-\d{2}-\d{2}$/.test(l.date) ? l.date : today();
     if(l.kind==="fitness" && l.name && isFinite(+l.value) && l.value!==null && l.value!==""){
       const name = String(l.name).slice(0,40), value = +l.value, unit = String(l.unit||"").slice(0,12);
-      if(!S.fitness.some(f => f.date===date && f.name.toLowerCase()===name.toLowerCase() && f.value===value)){
+      {
         S.fitness.push({id:newId(), t:Date.now(), date, name, value, unit}); notes.push("Logged fitness: " + name + " " + value + (unit?" "+unit:"") + " on " + date);
       }
     }else if(l.kind==="btc" && isFinite(+l.btc) && +l.btc>0){
       const btc = +l.btc, usd = (l.usd===null || l.usd===undefined || l.usd==="" || !isFinite(+l.usd)) ? null : +l.usd;
-      if(!S.btc.some(b => b.date===date && b.btc===btc && b.usd===usd)){
+      {
         S.btc.push({id:newId(), t:Date.now(), date, btc, usd}); notes.push("Logged Bitcoin: +" + btc + " BTC" + (usd!==null?" for "+money(usd):"") + " on " + date);
       }
     }
   }
-  if(S.memories.length > 300) S.memories = S.memories.sort((a,b) => b.t-a.t).slice(0,300);
+  if(S.memories.length > 300){ const sorted = S.memories.sort((a,b) => b.t-a.t); sorted.slice(300).forEach(m => { S.tomb[m.id] = Date.now(); }); S.memories = sorted.slice(0,300); }
   return notes;
 }
 async function send(text){
@@ -495,12 +501,12 @@ async function send(text){
   $("#chat").insertAdjacentHTML("beforeend", `<div class="msg ai typing" id="typing"><div class="bubble">Your Board is thinking…</div></div>`); $("#chat").scrollTop = 1e9;
   const who = member==="auto" ? "Chief of Staff" : BOARD.find(x => x.id===member).name;
   try{
-    const history = S.chat.slice(-20).map(m => ({role:m.role==="user"?"user":"assistant", content:m.content}));
+    const history = S.chat.filter(m => cm || !m.case).slice(-20).map(m => ({role:m.role==="user"?"user":"assistant", content:m.content}));
     const reply = await callAI([{role:"system", content:systemPrompt()}, ...history], false);
-    const msg = {role:"assistant", content:reply, who, case:cm};
+    const msg = {id:newId(), role:"assistant", content:reply, who, case:cm};
     S.chat.push(msg);
     if(!cm){
-      try{ msg.mem = await extractMemory(text, reply); }catch(e){ /* memory step failed; the answer still stands */ }
+      try{ msg.mem = await extractMemory(text, reply); }catch(e){ msg.memFail = {u:text, a:reply, err:e.message}; }
     }
     await persist(); renderMemory();
   }catch(e){
@@ -550,16 +556,36 @@ async function exportBackup(){
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   toast(cryptoKey ? "Encrypted backup downloaded. Keep it somewhere safe." : "Backup downloaded. It is NOT encrypted, so keep it private.");
 }
-async function importBackup(file){
-  try{
-    const o = JSON.parse(await file.text());
-    if(o.enc){
-      const pass = prompt("This backup is encrypted. Enter its passphrase:"); if(!pass) return;
-      const r = await decryptBlob(o, pass); S = normalize(r.state); cryptoKey = r.key; salt = r.salt; passMem = pass;
-    }else{ S = normalize(o.data || {}); }
-    await persist(); renderAll(); toast("Backup restored.");
-  }catch(e){ toast("That file couldn't be opened (wrong file or wrong passphrase)."); }
+function badState(d){
+  if(!d || typeof d !== "object" || Array.isArray(d)) return "it does not contain app data";
+  if(!["profile","memories","fitness","btc","settings"].some(k => k in d)) return "it does not look like a Chief of Staff backup";
+  if(d.profile !== undefined && typeof d.profile !== "string") return "the profile is damaged";
+  if(d.settings !== undefined && (typeof d.settings !== "object" || d.settings === null)) return "the settings are damaged";
+  const chk = {memories:x => x && typeof x.id==="string" && typeof x.text==="string", fitness:x => x && typeof x.id==="string" && typeof x.name==="string" && isFinite(+x.value), btc:x => x && typeof x.id==="string" && isFinite(+x.btc)};
+  for(const k in chk){ if(d[k] === undefined) continue; if(!Array.isArray(d[k]) || !d[k].every(chk[k])) return "the " + k + " list is damaged"; }
+  return "";
 }
+const countsOf = st => ({m:(st.memories||[]).length, b:(st.btc||[]).length, f:(st.fitness||[]).length, p:!!(st.profile||"").trim()});
+async function importBackup(file){
+  let o;
+  try{ o = JSON.parse(await file.text()); }catch(e){ toast("That file is not a readable backup. Nothing was changed."); return; }
+  if(!o || typeof o !== "object" || o.v !== 1){ toast("That is not a Chief of Staff backup file. Nothing was changed."); return; }
+  let st, key = null, sl = null, pass = null;
+  if(o.enc){
+    if(!["salt","iv","ct"].every(k => typeof o[k]==="string" && o[k])){ toast("That backup file is damaged. Nothing was changed."); return; }
+    pass = prompt("This backup is encrypted. Enter its passphrase:"); if(!pass) return;
+    try{ const r = await decryptBlob(o, pass); st = r.state; key = r.key; sl = r.salt; }
+    catch(e){ toast("Wrong passphrase, or the file is damaged. Nothing was changed."); return; }
+  }else{ st = o.data; }
+  const why = badState(st); if(why){ toast("This backup can't be used because " + why + ". Nothing was changed."); return; }
+  const nb = countsOf(st), nc = countsOf(S);
+  if(!nb.m && !nb.b && !nb.f && !nb.p && (nc.m || nc.b || nc.f || nc.p)){ toast("This backup contains no data, so nothing was replaced."); return; }
+  if(!confirm("Replace the data on this device with this backup?\n\nBackup: " + nb.m + " memories, " + nb.b + " Bitcoin entries, " + nb.f + " fitness entries" + (nb.p ? ", profile included" : ", no profile") + ".\nNow on this device: " + nc.m + " memories, " + nc.b + " Bitcoin entries, " + nc.f + " fitness entries.\n\nYour current data is kept as a safety copy first.")) return;
+  try{ const cur = localStorage.getItem(LS); if(cur) localStorage.setItem(LS + ".prev", cur); }catch(e){}
+  S = normalize(st); if(key){ cryptoKey = key; salt = sl; passMem = pass; }
+  await persist(); renderAll(); toast("Backup restored. Your previous data was kept as a safety copy in this browser.");
+}
+
 
 
 /* ---------- shared data helpers ---------- */
@@ -860,6 +886,15 @@ $("#s-close").onclick = $("#s-close2").onclick = () => { $("#syncdlg").classList
 $("#s-connect").onclick = connectSync;
 $("#s-now").onclick = () => syncNow(true);
 $("#s-off").onclick = async () => { if(!confirm("Stop syncing this device? The encrypted copy stays in your GitHub account.")) return; S.sync = {}; await persistLocal(); renderSyncStat(); $("#syncdlg").classList.remove("on"); toast("Sync disconnected."); };
+$("#chat").addEventListener("click", async e => {
+  const b = e.target.closest("[data-retry]"); if(!b) return;
+  const m = S.chat.find(x => x.id === b.dataset.retry); if(!m || !m.memFail) return;
+  b.disabled = true; b.textContent = "Retrying…";
+  try{ const notes = await extractMemory(m.memFail.u, m.memFail.a); m.mem = notes.length ? notes : ["Memory check finished: nothing new to save."]; delete m.memFail; await persist(); renderMemory(); toast("Saved to memory."); }
+  catch(err){ m.memFail.err = err.message; }
+  renderChat();
+});
+$("#btn-failtest").onclick = () => { testFailNext = true; toast("The next memory save will fail once, so you can see the warning and retry."); };
 $("#btn-privacy").onclick = () => $("#priv").classList.add("on");
 $("#priv-close").onclick = () => $("#priv").classList.remove("on");
 $("#btn-export").onclick = exportBackup;
