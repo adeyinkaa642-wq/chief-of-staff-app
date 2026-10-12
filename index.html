@@ -252,7 +252,7 @@ const BOARD = [
 const PROV = {
   openai:{label:"OpenAI API key", ph:"sk-...", model:"gpt-4o-mini",
     help:"<b>How to get one:</b> platform.openai.com → sign up → <b>API keys</b> → <b>Create new secret key</b> → copy it here. Then add about $5 under <b>Billing</b>. This is separate from ChatGPT Plus. Under Billing → Limits, set a monthly spending limit so it can never overspend."},
-  gemini:{label:"Google Gemini API key", ph:"AIza...", model:"gemini-3.5-flash",
+  gemini:{label:"Google Gemini API key", ph:"AIza...", model:"gemini-1.5-flash",
     help:"<b>How to get one (free, no card):</b> go to aistudio.google.com → sign in with a Google account → <b>Get API key</b> → <b>Create API key</b> → copy it here.<br><b>Privacy warning:</b> on Google's free tier, Google may use what you send to improve its products. Use this option only for testing with <b>fictional</b> information, never real personal, financial or case details. A paid Gemini key does not have that limitation."}
 };
 const QUICK = [
@@ -475,7 +475,7 @@ Reply with JSON only: {"add":[{"text":"","cat":""}],"update":[{"id":"","text":""
     S.memories.push({id:newId(), text:String(a.text).slice(0,500), cat:CATS.includes(a.cat)?a.cat:"note", t:Date.now()}); notes.push("Saved: " + a.text);
   }
   for(const u of ops.update||[]){ const m = S.memories.find(x => x.id===u.id); if(m && u.text){ m.text = String(u.text).slice(0,500); m.t = Date.now(); notes.push("Updated: " + u.text); } }
-  for(const id of ops.delete||[]){ const i = S.memories.findIndex(x => x.id===id); if(i>=0){ notes.push("Forgot: " + S.memories[i].text); S.tomb[id] = Date.now(); S.memories.splice(i,1); } }
+  for(const id of ops.delete||[]){ const i = S.memories.findIndex(x => x.id===id); if(i>=0){ notes.push("Forgot: " + S.memories[i].text); S.tomb[id] = Date.now() + 1000; S.memories.splice(i,1); } }
   for(const l of ops.log||[]){
     if(!l) continue; const date = /^\d{4}-\d{2}-\d{2}$/.test(l.date) ? l.date : today();
     if(l.kind==="fitness" && l.name && isFinite(+l.value) && l.value!==null && l.value!==""){
@@ -485,9 +485,8 @@ Reply with JSON only: {"add":[{"text":"","cat":""}],"update":[{"id":"","text":""
       }
     }else if(l.kind==="btc" && isFinite(+l.btc) && +l.btc>0){
       const btc = +l.btc, usd = (l.usd===null || l.usd===undefined || l.usd==="" || !isFinite(+l.usd)) ? null : +l.usd;
-      {
-        S.btc.push({id:newId(), t:Date.now(), date, btc, usd}); notes.push("Logged Bitcoin: +" + btc + " BTC" + (usd!==null?" for "+money(usd):"") + " on " + date);
-      }
+      // Fix: allow multiple BTC purchases on the same day — each gets unique id + timestamp
+      S.btc.push({id:newId(), t:Date.now() + S.btc.length, date, btc, usd}); notes.push("Logged Bitcoin: +" + btc + " BTC" + (usd!==null?" for "+money(usd):"") + " on " + date);
     }
   }
   if(S.memories.length > 300){ const sorted = S.memories.sort((a,b) => b.t-a.t); sorted.slice(300).forEach(m => { S.tomb[m.id] = Date.now(); }); S.memories = sorted.slice(0,300); }
@@ -535,6 +534,8 @@ async function saveSettings(demo){
   const p = $("#f-pass").value;
   if(p && p.length < 8){ $("#dlg-err").textContent = "Passphrase must be at least 8 characters."; return; }
   S.settings.provider = $("#f-prov").value; S.settings.apiKey = $("#f-key").value.trim(); S.settings.demo = !!demo && !S.settings.apiKey; S.settings.model = $("#f-model").value.trim() || PROV[S.settings.provider].model;
+  // If user entered a real key, always clear demo mode
+  if(S.settings.apiKey) S.settings.demo = false;
   const newProf = $("#f-profile").value.slice(0,60000);
   if(newProf !== S.profile){ S.profile = newProf; S.profileT = Date.now(); }
   S.metaT = Date.now();
@@ -592,7 +593,7 @@ async function importBackup(file){
 const today = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); };
 const money = n => (n<0?"-":"") + "$" + Math.abs(n).toLocaleString("en-US", {maximumFractionDigits: Math.abs(n)<100?2:0});
 const btcFmt = n => (+n).toLocaleString("en-US", {maximumFractionDigits: 8});
-async function delItem(col, id){ S[col] = S[col].filter(x => x.id!==id); S.tomb[id] = Date.now(); const k = Object.keys(S.tomb); if(k.length>3000) k.sort((a,b)=>S.tomb[a]-S.tomb[b]).slice(0,k.length-3000).forEach(x => delete S.tomb[x]); await persist(); }
+async function delItem(col, id){ S[col] = S[col].filter(x => x.id!==id); S.tomb[id] = Date.now() + 1000; const k = Object.keys(S.tomb); if(k.length>3000) k.sort((a,b)=>S.tomb[a]-S.tomb[b]).slice(0,k.length-3000).forEach(x => delete S.tomb[x]); await persist(); }
 
 /* ---------- live Bitcoin price ---------- */
 async function fetchPrice(){
