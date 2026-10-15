@@ -434,9 +434,19 @@ async function callGemini(messages, json, key){
     let detail = ""; try{ detail = (await r.json()).error.message; }catch(e){}
     if(r.status===400 && /api key/i.test(detail)) throw new Error("Google rejected the API key. Open Settings and paste it again (no extra spaces).");
     if(r.status===401 || r.status===403) throw new Error("Google refused the key or it isn't allowed to use this model. " + detail);
-    if(r.status===404) throw new Error("Google doesn't recognise the model name in Settings. Check aistudio.google.com for a current model name. " + detail);
+    if(r.status===404) throw new Error("Google doesn't recognise the model name in Settings. Try gemini-3.8-flash. " + detail);
     if(r.status===429) throw new Error("You've reached the free usage limit for now. Wait a minute and try again. " + detail);
-    throw new Error("Google error " + r.status + ". " + detail);
+    if(r.status===503 || r.status===500 || r.status===529){
+      // Server overloaded — wait 3 seconds and retry once automatically
+      await new Promise(res => setTimeout(res, 3000));
+      let r2;
+      try{ r2 = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {method:"POST", headers:{"Content-Type":"application/json","x-goog-api-key":key}, body:JSON.stringify(body)}); }
+      catch(e){ throw new Error("Couldn't reach Google after retry. Check your connection."); }
+      if(!r2.ok){ let d2=""; try{d2=(await r2.json()).error.message;}catch(e){} throw new Error("Google is temporarily overloaded. Please wait 30 seconds and try again. " + d2); }
+      r = r2;
+    } else {
+      throw new Error("Google error " + r.status + ". " + detail);
+    }
   }
   const j = await r.json(), c = j.candidates && j.candidates[0];
   const text = c && c.content && c.content.parts ? c.content.parts.filter(p => !p.thought).map(p => p.text||"").join("") : "";
@@ -505,7 +515,18 @@ async function send(text){
     const msg = {id:newId(), role:"assistant", content:reply, who, case:cm};
     S.chat.push(msg);
     if(!cm){
-      try{ msg.mem = await extractMemory(text, reply); }catch(e){ msg.memFail = {u:text, a:reply, err:e.message}; }
+      try{ msg.mem = await extractMemory(text, reply); }
+      catch(e){
+        // Auto-retry once on server errors before showing the warning
+        if(/503|500|overload|unavailable/i.test(e.message)){
+          try{
+            await new Promise(res => setTimeout(res, 4000));
+            msg.mem = await extractMemory(text, reply);
+          } catch(e2){ msg.memFail = {u:text, a:reply, err:e2.message}; }
+        } else {
+          msg.memFail = {u:text, a:reply, err:e.message};
+        }
+      }
     }
     await persist(); renderMemory();
   }catch(e){
