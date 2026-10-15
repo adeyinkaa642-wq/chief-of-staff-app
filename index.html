@@ -182,7 +182,7 @@ input[type=date],input[type=number],select{width:100%;background:var(--panel2);c
   <h2>What happens to your data</h2>
   <p class="sub">Plain answers, no marketing.</p>
   <div class="note"><b>Stored on your device only:</b> your profile, saved memories, recent chat, and API key live in this browser's local storage. The web page that serves this app contains none of your personal information, so other visitors cannot see it.</div>
-  <div class="note"><b>Sent to OpenAI:</b> every message you send, plus your profile and saved memories, is sent to the AI provider you chose (OpenAI or Google Gemini) to generate each reply. Your browser talks directly to that provider. The page is configured to block connections to anywhere except OpenAI, Google Gemini, the public price feeds, and GitHub (only if you turn on sync).</div>
+  <div class="note"><b>Sent to your AI provider:</b> every message you send, plus your profile and saved memories, is sent to the AI provider you chose (OpenAI or Google Gemini) to generate each reply. Your browser talks directly to that provider. The page is configured to block connections to anywhere except OpenAI, Google Gemini, the public price feeds, and GitHub (only if you turn on sync). Your API key and encrypted data are also included in the sync file sent to GitHub if sync is enabled.</div>
   <div class="note"><b>Bitcoin price:</b> the app asks Coinbase (or CoinGecko as a backup) for the public BTC price. That request contains none of your information.</div>
   <div class="note"><b>Sync (only if you turn it on):</b> your data is encrypted on your device and the encrypted file is stored in your own private GitHub gist. GitHub sees only ciphertext. A strong passphrase matters, because it is the only thing protecting that file if someone ever got the gist link.</div>
   <div class="note"><b>Gemini free tier:</b> Google may use content sent with a free Gemini key to improve its products. Use a free Gemini key only for testing with fictional data.</div>
@@ -422,6 +422,8 @@ async function callGemini(messages, json, key){
     if(contents.length && contents[contents.length-1].role===role) contents[contents.length-1].parts[0].text += "\n\n" + m.content;
     else contents.push({role, parts:[{text:m.content}]});
   }
+  // Smaller fix: Gemini requires history to start with a user turn — drop any leading model turns
+  while(contents.length && contents[0].role === "model") contents.shift();
   const body = {contents, generationConfig:{temperature: json?0:0.4, ...(json?{responseMimeType:"application/json"}:{})}};
   if(sys) body.systemInstruction = {parts:[{text:sys}]};
   const model = (S.settings.model||PROV.gemini.model).replace(/^models\//,"");
@@ -480,12 +482,68 @@ Reply with JSON only: {"add":[{"text":"","cat":""}],"update":[{"id":"","text":""
   let ops; try{ ops = JSON.parse(out); }catch(e){ throw new Error("The AI returned an unreadable answer for the memory step."); }
   if(!ops || typeof ops !== "object") throw new Error("The AI returned an unexpected answer for the memory step.");
   for(const k of ["add","update","delete","log"]) ops[k] = Array.isArray(ops[k]) ? ops[k] : [];
-  const notes = [];
-  for(const a of ops.add||[]) if(a && a.text && !S.memories.some(m => m.text.toLowerCase()===String(a.text).toLowerCase())){
-    S.memories.push({id:newId(), text:String(a.text).slice(0,500), cat:CATS.includes(a.cat)?a.cat:"note", t:Date.now()}); notes.push("Saved: " + a.text);
+
+  // Blocker 1 fix: if AI returned something but none of the arrays have content and user
+  // was clearly trying to save/update/delete, that is a silent failure — throw so the orange warning fires
+  if(!["add","update","delete","log"].some(k => ops[k].length > 0)){
+    const intentional = /\b(goal|plan|target|buy|acquire|hold|btc|bitcoin|acre|forget|delete|remove|remember|update|change|raise|lower|moved)\b/i.test(userText);
+    if(intentional) throw new Error("The AI didn't extract anything to remember from that message. Try rephrasing, or add a memory manually using the + Add button.");
   }
-  for(const u of ops.update||[]){ const m = S.memories.find(x => x.id===u.id); if(m && u.text){ m.text = String(u.text).slice(0,500); m.t = Date.now(); notes.push("Updated: " + u.text); } }
-  for(const id of ops.delete||[]){ const i = S.memories.findIndex(x => x.id===id); if(i>=0){ notes.push("Forgot: " + S.memories[i].text); S.tomb[id] = Date.now() + 1000; S.memories.splice(i,1); } }
+
+  const notes = [];
+
+  // Blocker 2 fix: word-overlap duplicate guard — if add shares enough words with an existing
+  // memory of same category, convert it to an update instead of adding a duplicate
+  function wordOverlap(a, b){
+    const stopWords = new Set(["the","a","an","is","to","of","by","my","i","in","and","or","for","with","at","on","by"]);
+    const wa = new Set(a.toLowerCase().match(/\b\w{3,}\b/g)||[]).difference ? [...new Set(a.toLowerCase().match(/\b\w{3,}\b/g)||[])].filter(w => !stopWords.has(w)) : [...new Set(a.toLowerCase().match(/\b\w{3,}\b/g)||[])].filter(w => !stopWords.has(w));
+    const wb = [...new Set(b.toLowerCase().match(/\b\w{3,}\b/g)||[])].filter(w => !stopWords.has(w));
+    if(!wa.length || !wb.length) return 0;
+    const shared = wa.filter(w => wb.includes(w)).length;
+    return shared / Math.min(wa.length, wb.length);
+  }
+
+  for(const a of ops.add||[]){
+    if(!a || !a.text) continue;
+    const text = String(a.text).slice(0,500);
+    // exact duplicate check
+    if(S.memories.some(m => m.text.toLowerCase() === text.toLowerCase())) continue;
+    // word-overlap check: if >50% word overlap with existing same-category memory, update instead
+    const cat = CATS.includes(a.cat) ? a.cat : "note";
+    const similar = S.memories.find(m => (m.cat === cat || m.cat === "goal") && wordOverlap(m.text, text) > 0.5);
+    if(similar){
+      similar.text = text; similar.t = Date.now(); notes.push("Updated: " + text);
+    } else {
+      S.memories.push({id:newId(), text, cat, t:Date.now()}); notes.push("Saved: " + text);
+    }
+  }
+
+  for(const u of ops.update||[]){
+    const m = S.memories.find(x => x.id===u.id);
+    if(m && u.text){ m.text = String(u.text).slice(0,500); m.t = Date.now(); notes.push("Updated: " + u.text); }
+    else if(u.id && !m){
+      // Blocker 1 fix: unknown ID on update — don't silently drop it
+      // Try word-overlap match as fallback
+      const fallback = u.text ? S.memories.find(x => wordOverlap(x.text, u.text) > 0.5) : null;
+      if(fallback && u.text){ fallback.text = String(u.text).slice(0,500); fallback.t = Date.now(); notes.push("Updated: " + u.text); }
+      else throw new Error("The AI tried to update a memory it couldn't find. Try saying your update again.");
+    }
+  }
+
+  for(const id of ops.delete||[]){
+    const i = S.memories.findIndex(x => x.id===id);
+    if(i>=0){ notes.push("Forgot: " + S.memories[i].text); S.tomb[id] = Date.now() + 1000; S.memories.splice(i,1); }
+    else {
+      // Blocker 1 fix: unknown ID on delete — throw so orange warning fires
+      throw new Error("I couldn't match that to a saved memory. Check the Memory panel and try again.");
+    }
+  }
+
+  // Blocker 1 fix: if user said forget/delete/remove but nothing was deleted, warn them
+  if(/\b(forget|delete|remove|clear)\b/i.test(userText) && !notes.some(n => n.startsWith("Forgot:"))){
+    const hasDeleteOps = (ops.delete||[]).length > 0;
+    if(!hasDeleteOps) throw new Error("I couldn't find a matching memory to delete. Check the Memory panel on the left and delete it manually if needed.");
+  }
   for(const l of ops.log||[]){
     if(!l) continue; const date = /^\d{4}-\d{2}-\d{2}$/.test(l.date) ? l.date : today();
     if(l.kind==="fitness" && l.name && isFinite(+l.value) && l.value!==null && l.value!==""){
@@ -500,6 +558,17 @@ Reply with JSON only: {"add":[{"text":"","cat":""}],"update":[{"id":"","text":""
     }
   }
   if(S.memories.length > 300){ const sorted = S.memories.sort((a,b) => b.t-a.t); sorted.slice(300).forEach(m => { S.tomb[m.id] = Date.now(); }); S.memories = sorted.slice(0,300); }
+
+  // Blocker 4 fix: if any memory mentions a BTC stack target, sync it to btcTarget tracker
+  // so the tracker goal line and the AI's tracked-data block match
+  for(const m of S.memories){
+    const btcGoalMatch = m.text.match(/(?:hold|accumulate|stack|goal.*?)\s+([\d.]+)\s*(?:BTC|bitcoin)/i);
+    if(btcGoalMatch && +btcGoalMatch[1] > 0 && (m.cat === "btc" || m.cat === "goal")){
+      const newTarget = +btcGoalMatch[1];
+      if(newTarget !== S.btcTarget){ S.btcTarget = newTarget; notes.push("BTC tracker goal updated to " + newTarget + " BTC"); }
+    }
+  }
+
   return notes;
 }
 async function send(text){
@@ -576,7 +645,7 @@ async function exportBackup(){
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
   a.download = "chief-of-staff-backup-" + new Date().toISOString().slice(0,10) + (cryptoKey?"-encrypted":"-UNENCRYPTED") + ".json";
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  toast(cryptoKey ? "Encrypted backup downloaded. Keep it somewhere safe." : "Backup downloaded. It is NOT encrypted, so keep it private.");
+  toast(cryptoKey ? "Encrypted backup downloaded. Keep it somewhere safe." : "⚠️ Backup downloaded WITHOUT encryption. It contains your profile, memories and API key in plain text. Store it somewhere private and delete it when done.");
 }
 function badState(d){
   if(!d || typeof d !== "object" || Array.isArray(d)) return "it does not contain app data";
@@ -604,7 +673,13 @@ async function importBackup(file){
   if(!nb.m && !nb.b && !nb.f && !nb.p && (nc.m || nc.b || nc.f || nc.p)){ toast("This backup contains no data, so nothing was replaced."); return; }
   if(!confirm("Replace the data on this device with this backup?\n\nBackup: " + nb.m + " memories, " + nb.b + " Bitcoin entries, " + nb.f + " fitness entries" + (nb.p ? ", profile included" : ", no profile") + ".\nNow on this device: " + nc.m + " memories, " + nc.b + " Bitcoin entries, " + nc.f + " fitness entries.\n\nYour current data is kept as a safety copy first.")) return;
   try{ const cur = localStorage.getItem(LS); if(cur) localStorage.setItem(LS + ".prev", cur); }catch(e){}
-  S = normalize(st); if(key){ cryptoKey = key; salt = sl; passMem = pass; }
+  // Blocker 3 fix: preserve API key and sync token across restore — they live on this device, not in the backup
+  const keepApiKey = S.settings.apiKey || "";
+  const keepSync = S.sync && S.sync.token ? S.sync : {};
+  S = normalize(st);
+  if(!S.settings.apiKey && keepApiKey) S.settings.apiKey = keepApiKey;
+  if((!S.sync || !S.sync.token) && keepSync.token) S.sync = keepSync;
+  if(key){ cryptoKey = key; salt = sl; passMem = pass; }
   await persist(); renderAll(); toast("Backup restored. Your previous data was kept as a safety copy in this browser.");
 }
 
