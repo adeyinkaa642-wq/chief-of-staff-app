@@ -483,34 +483,30 @@ Reply with JSON only: {"add":[{"text":"","cat":""}],"update":[{"id":"","text":""
   if(!ops || typeof ops !== "object") throw new Error("The AI returned an unexpected answer for the memory step.");
   for(const k of ["add","update","delete","log"]) ops[k] = Array.isArray(ops[k]) ? ops[k] : [];
 
-  // Blocker 1 fix: if AI returned something but none of the arrays have content and user
-  // was clearly trying to save/update/delete, that is a silent failure — throw so the orange warning fires
-  if(!["add","update","delete","log"].some(k => ops[k].length > 0)){
-    const intentional = /\b(goal|plan|target|buy|acquire|hold|btc|bitcoin|acre|forget|delete|remove|remember|update|change|raise|lower|moved)\b/i.test(userText);
-    if(intentional) throw new Error("The AI didn't extract anything to remember from that message. Try rephrasing, or add a memory manually using the + Add button.");
-  }
+  // Must-fix A: removed the "intentional" check — an empty result is valid.
+  // Only throw for structural problems (wrong-shape JSON handled above via the ops[k] loop).
 
   const notes = [];
 
   // Blocker 2 fix: word-overlap duplicate guard — if add shares enough words with an existing
-  // memory of same category, convert it to an update instead of adding a duplicate
+  // Must-fix B: word-overlap duplicate guard — improved stop words, same category required, min 3 shared words
   function wordOverlap(a, b){
-    const stopWords = new Set(["the","a","an","is","to","of","by","my","i","in","and","or","for","with","at","on","by"]);
-    const wa = new Set(a.toLowerCase().match(/\b\w{3,}\b/g)||[]).difference ? [...new Set(a.toLowerCase().match(/\b\w{3,}\b/g)||[])].filter(w => !stopWords.has(w)) : [...new Set(a.toLowerCase().match(/\b\w{3,}\b/g)||[])].filter(w => !stopWords.has(w));
-    const wb = [...new Set(b.toLowerCase().match(/\b\w{3,}\b/g)||[])].filter(w => !stopWords.has(w));
+    const stopWords = new Set(["the","a","an","is","to","of","by","my","i","in","and","or","for","with","at","on","by","user","users","goal","goals","plan","plans","want","wants","their","that","this","has","have","will","would","should","could","been","was","are","its"]);
+    const words = t => [...new Set((t||"").toLowerCase().match(/\b\w{3,}\b/g)||[])].filter(w => !stopWords.has(w));
+    const wa = words(a), wb = words(b);
     if(!wa.length || !wb.length) return 0;
     const shared = wa.filter(w => wb.includes(w)).length;
+    if(shared < 3) return 0; // Must-fix B: require at least 3 shared meaningful words
     return shared / Math.min(wa.length, wb.length);
   }
 
   for(const a of ops.add||[]){
     if(!a || !a.text) continue;
     const text = String(a.text).slice(0,500);
-    // exact duplicate check
     if(S.memories.some(m => m.text.toLowerCase() === text.toLowerCase())) continue;
-    // word-overlap check: if >50% word overlap with existing same-category memory, update instead
     const cat = CATS.includes(a.cat) ? a.cat : "note";
-    const similar = S.memories.find(m => (m.cat === cat || m.cat === "goal") && wordOverlap(m.text, text) > 0.5);
+    // Must-fix B: require SAME category only — no || "goal" cross-category match
+    const similar = S.memories.find(m => m.cat === cat && wordOverlap(m.text, text) > 0.5);
     if(similar){
       similar.text = text; similar.t = Date.now(); notes.push("Updated: " + text);
     } else {
@@ -539,8 +535,9 @@ Reply with JSON only: {"add":[{"text":"","cat":""}],"update":[{"id":"","text":""
     }
   }
 
-  // Blocker 1 fix: if user said forget/delete/remove but nothing was deleted, warn them
-  if(/\b(forget|delete|remove|clear)\b/i.test(userText) && !notes.some(n => n.startsWith("Forgot:"))){
+  // Must-fix A: narrowed forget check — only fire when user explicitly starts with forget/delete
+  // avoids false positives like "remove the LLC from my plan" or "clear my head"
+  if(/^\s*(?:please\s+)?(?:forget|delete)\b/i.test(userText) && !notes.some(n => n.startsWith("Forgot:"))){
     const hasDeleteOps = (ops.delete||[]).length > 0;
     if(!hasDeleteOps) throw new Error("I couldn't find a matching memory to delete. Check the Memory panel on the left and delete it manually if needed.");
   }
@@ -559,13 +556,18 @@ Reply with JSON only: {"add":[{"text":"","cat":""}],"update":[{"id":"","text":""
   }
   if(S.memories.length > 300){ const sorted = S.memories.sort((a,b) => b.t-a.t); sorted.slice(300).forEach(m => { S.tomb[m.id] = Date.now(); }); S.memories = sorted.slice(0,300); }
 
-  // Blocker 4 fix: if any memory mentions a BTC stack target, sync it to btcTarget tracker
-  // so the tracker goal line and the AI's tracked-data block match
-  for(const m of S.memories){
-    const btcGoalMatch = m.text.match(/(?:hold|accumulate|stack|goal.*?)\s+([\d.]+)\s*(?:BTC|bitcoin)/i);
-    if(btcGoalMatch && +btcGoalMatch[1] > 0 && (m.cat === "btc" || m.cat === "goal")){
+  // Should-fix: BTC goal from chat syncs to tracker — only from memories changed in THIS call,
+  // bump metaT so sync propagates, never override a manually set target that is larger
+  const changedTexts = notes.filter(n => n.startsWith("Saved:") || n.startsWith("Updated:")).map(n => n.replace(/^(?:Saved|Updated): /,""));
+  for(const text of changedTexts){
+    const btcGoalMatch = text.match(/(?:hold|accumulate|stack)\s+([\d.]+)\s*(?:BTC|bitcoin)/i);
+    if(btcGoalMatch && +btcGoalMatch[1] > 0){
       const newTarget = +btcGoalMatch[1];
-      if(newTarget !== S.btcTarget){ S.btcTarget = newTarget; notes.push("BTC tracker goal updated to " + newTarget + " BTC"); }
+      // Only update if: no manual target set yet, OR chat goal is larger than current target
+      if(!S.btcTarget || newTarget > S.btcTarget){
+        S.btcTarget = newTarget; S.metaT = Date.now();
+        notes.push("BTC tracker goal updated to " + newTarget + " BTC");
+      }
     }
   }
 
