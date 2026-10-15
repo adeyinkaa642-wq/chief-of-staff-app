@@ -335,11 +335,11 @@ function renderBoard(){
 }
 function renderMemory(){
   const used = [...new Set(S.memories.map(m => m.cat))];
-  $("#cats").innerHTML = ["all", ...used].map(c => `<button class="cat ${c===catFilter?"on":""}" data-c="${c}">${c}</button>`).join("");
+  $("#cats").innerHTML = ["all", ...used].map(c => `<button class="cat ${c===catFilter?"on":""}" data-c="${esc(c)}">${esc(c)}</button>`).join("");
   $("#cats").querySelectorAll(".cat").forEach(el => el.onclick = () => { catFilter = el.dataset.c; renderMemory(); });
   $("#memcount").textContent = S.memories.length ? "(" + S.memories.length + ")" : "";
   const list = S.memories.filter(m => catFilter==="all" || m.cat===catFilter).sort((a,b) => b.t-a.t);
-  $("#memlist").innerHTML = list.length ? list.map(m => `<div class="mem"><div>${esc(m.text)}</div><div class="meta"><span>${esc(m.cat)} · ${fmtDate(m.t)}</span><span><button data-edit="${m.id}">edit</button><button data-del="${m.id}">delete</button></span></div></div>`).join("")
+  $("#memlist").innerHTML = list.length ? list.map(m => `<div class="mem"><div>${esc(m.text)}</div><div class="meta"><span>${esc(m.cat)} · ${fmtDate(m.t)}</span><span><button data-edit="${esc(m.id)}">edit</button><button data-del="${esc(m.id)}">delete</button></span></div></div>`).join("")
     : `<div class="empty">Nothing saved yet. Just talk about your goals and decisions and they'll be remembered automatically. Say "forget …" to remove something.</div>`;
   $("#memlist").querySelectorAll("[data-del]").forEach(el => el.onclick = async () => { await delItem("memories", el.dataset.del); renderMemory(); });
   $("#memlist").querySelectorAll("[data-edit]").forEach(el => el.onclick = async () => {
@@ -535,9 +535,8 @@ Reply with JSON only: {"add":[{"text":"","cat":""}],"update":[{"id":"","text":""
     }
   }
 
-  // Must-fix A: narrowed forget check — only fire when user explicitly starts with forget/delete
-  // avoids false positives like "remove the LLC from my plan" or "clear my head"
-  if(/^\s*(?:please\s+)?(?:forget|delete)\b/i.test(userText) && !notes.some(n => n.startsWith("Forgot:"))){
+  // Fix 2: narrowed forget check — exclude "forget it", "delete that email", "delete the draft"
+  if(/^\s*(?:please\s+)?(?:forget|delete)\b(?!\s+(?:it\b|that\s+(?:email|message|draft|file|document)))/i.test(userText) && !notes.some(n => n.startsWith("Forgot:"))){
     const hasDeleteOps = (ops.delete||[]).length > 0;
     if(!hasDeleteOps) throw new Error("I couldn't find a matching memory to delete. Check the Memory panel on the left and delete it manually if needed.");
   }
@@ -556,18 +555,16 @@ Reply with JSON only: {"add":[{"text":"","cat":""}],"update":[{"id":"","text":""
   }
   if(S.memories.length > 300){ const sorted = S.memories.sort((a,b) => b.t-a.t); sorted.slice(300).forEach(m => { S.tomb[m.id] = Date.now(); }); S.memories = sorted.slice(0,300); }
 
-  // Should-fix: BTC goal from chat syncs to tracker — only from memories changed in THIS call,
-  // bump metaT so sync propagates, never override a manually set target that is larger
-  const changedTexts = notes.filter(n => n.startsWith("Saved:") || n.startsWith("Updated:")).map(n => n.replace(/^(?:Saved|Updated): /,""));
-  for(const text of changedTexts){
-    const btcGoalMatch = text.match(/(?:hold|accumulate|stack)\s+([\d.]+)\s*(?:BTC|bitcoin)/i);
-    if(btcGoalMatch && +btcGoalMatch[1] > 0){
-      const newTarget = +btcGoalMatch[1];
-      // Only update if: no manual target set yet, OR chat goal is larger than current target
-      if(!S.btcTarget || newTarget > S.btcTarget){
-        S.btcTarget = newTarget; S.metaT = Date.now();
-        notes.push("BTC tracker goal updated to " + newTarget + " BTC");
-      }
+  // Fix 1: BTC target sync — broader regex, allow decreases on updates, bump metaT
+  const BTC_GOAL = /(?:goal|target)[^.\d]{0,40}?(\d*\.?\d+)\s*(?:BTC|bitcoin)\b|(?:hold|accumulate|stack|own|reach)\s+(\d*\.?\d+)\s*(?:BTC|bitcoin)\b/i;
+  for(const n of notes.slice()){
+    const isUpd = n.startsWith("Updated: "), isNew = n.startsWith("Saved: ");
+    if(!isUpd && !isNew) continue;
+    const mt = n.replace(/^(?:Saved|Updated): /,"").match(BTC_GOAL);
+    const nt = mt ? +(mt[1] || mt[2]) : 0;
+    // an explicit chat update may lower the target; a brand-new add never overrides a larger manual one
+    if(nt > 0 && nt !== S.btcTarget && (isUpd || !S.btcTarget || nt > S.btcTarget)){
+      S.btcTarget = nt; S.metaT = Date.now(); notes.push("BTC tracker goal updated to " + nt + " BTC");
     }
   }
 
@@ -785,7 +782,7 @@ function btcHTML(){
   ${lineChart(pts, {target:S.btcTarget||null, fmt:v => (+v.toPrecision(3)).toString(), label:"Bitcoin stack over time", zero:true})}
   <form id="btcform" class="frm"><div><label>Date</label><input type="date" id="b-date" value="${today()}"></div><div><label>BTC added</label><input type="number" id="b-btc" step="any" min="0" placeholder="0.01"></div><div><label>USD paid (optional)</label><input type="number" id="b-usd" step="any" min="0" placeholder="600"></div><button class="btn primary">Add</button></form>
   <div class="frm"><div><label>My stack goal (BTC)</label><input type="number" id="b-target" step="any" min="0" value="${S.btcTarget||""}" placeholder="e.g. 1"></div><button class="btn" id="b-target-save" type="button">Save goal</button></div>
-  <table class="t"><tr><th>Date</th><th>BTC</th><th>USD paid</th><th></th></tr>${b.rows.slice().reverse().slice(0,40).map(r => `<tr><td>${esc(r.date)}</td><td>${btcFmt(r.btc)}</td><td>${r.usd===null||r.usd===undefined?"—":money(r.usd)}</td><td><button class="cat" data-del="${r.id}" data-col="btc">delete</button></td></tr>`).join("")}</table>
+  <table class="t"><tr><th>Date</th><th>BTC</th><th>USD paid</th><th></th></tr>${b.rows.slice().reverse().slice(0,40).map(r => `<tr><td>${esc(r.date)}</td><td>${btcFmt(r.btc)}</td><td>${r.usd===null||r.usd===undefined?"—":money(r.usd)}</td><td><button class="cat" data-del="${esc(r.id)}" data-col="btc">delete</button></td></tr>`).join("")}</table>
   <div class="note">Price from Coinbase (CoinGecko backup), refreshed every minute. Profit/loss only counts entries where you gave the USD paid. Not tax or investment advice.</div>`;
 }
 function fitHTML(){
@@ -803,7 +800,7 @@ function fitHTML(){
   ${names.length ? `<label>Chart</label><select id="fit-pick">${names.map(x => `<option ${cur&&x===cur?"selected":""} value="${esc(x.name)}">${esc(x.name)} (${x.rows.length})</option>`).join("")}</select>` : ""}
   ${stats}${chart}
   <form id="fitform" class="frm"><div><label>Date</label><input type="date" id="f-date" value="${today()}"></div><div><label>What</label><input type="text" id="f-name" list="fitnames" placeholder="Bodyweight, Bench press, 5K run…" value="${cur?esc(cur.name):""}"></div><datalist id="fitnames">${names.map(x => `<option value="${esc(x.name)}">`).join("")}</datalist><div><label>Number</label><input type="number" id="f-val" step="any"></div><div><label>Unit</label><input type="text" id="f-unit" placeholder="lb, min, mi" value="${cur?esc(cur.rows[cur.rows.length-1].unit||""):""}"></div><button class="btn primary">Add</button></form>
-  <table class="t"><tr><th>Date</th><th>What</th><th>Result</th><th></th></tr>${S.fitness.slice().sort((a,b) => a.date<b.date?1:a.date>b.date?-1:b.t-a.t).slice(0,40).map(r => `<tr><td>${esc(r.date)}</td><td>${esc(r.name)}</td><td>${r.value} ${esc(r.unit||"")}</td><td><button class="cat" data-del="${r.id}" data-col="fitness">delete</button></td></tr>`).join("")}</table>`;
+  <table class="t"><tr><th>Date</th><th>What</th><th>Result</th><th></th></tr>${S.fitness.slice().sort((a,b) => a.date<b.date?1:a.date>b.date?-1:b.t-a.t).slice(0,40).map(r => `<tr><td>${esc(r.date)}</td><td>${esc(r.name)}</td><td>${r.value} ${esc(r.unit||"")}</td><td><button class="cat" data-del="${esc(r.id)}" data-col="fitness">delete</button></td></tr>`).join("")}</table>`;
 }
 
 /* ---------- sync (end-to-end encrypted, via a private GitHub gist) ---------- */
